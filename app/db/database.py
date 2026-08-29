@@ -34,6 +34,8 @@ def run_migrations(engine):
                 conn.execute(text("ALTER TABLE folios ADD COLUMN version_id INTEGER DEFAULT 1 NOT NULL"))
             if "is_rebalancing" not in columns:
                 conn.execute(text("ALTER TABLE folios ADD COLUMN is_rebalancing BOOLEAN DEFAULT 0 NOT NULL"))
+            if "rebalance_status" not in columns:
+                conn.execute(text("ALTER TABLE folios ADD COLUMN rebalance_status VARCHAR DEFAULT 'IDLE' NOT NULL"))
                 
         if "orders" in table_names:
             columns = [col["name"] for col in inspector.get_columns("orders")]

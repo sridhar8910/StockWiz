@@ -267,9 +267,12 @@ class RebalanceWorker:
                         RebalanceTaskRecord.status == "FAILED"
                     ).count()
                     if failed_count > 0:
+                        folio.rebalance_status = "PARTIAL_FAILURE"
                         logger.warning(f"Folio {folio_id} rebalancing finished with PARTIAL_FAILURE ({failed_count} failed tasks).")
                     else:
+                        folio.rebalance_status = "COMPLETED"
                         logger.info(f"Folio {folio_id} rebalancing COMPLETED successfully.")
+                    db.commit()
         except Exception as e:
             logger.error(f"Error checking folio completion: {e}")
 

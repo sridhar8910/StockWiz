@@ -9,6 +9,7 @@ class Folio(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     version_id = Column(Integer, default=1, nullable=False)
     is_rebalancing = Column(Boolean, default=False, nullable=False)
+    rebalance_status = Column(String, default="IDLE", nullable=False)  # IDLE, REBALANCING, COMPLETED, PARTIAL_FAILURE
 
     stocks = relationship("FolioStock", back_populates="folio", cascade="all, delete-orphan", lazy="joined")
 

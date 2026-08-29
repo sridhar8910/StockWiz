@@ -1,9 +1,11 @@
 import uuid
 import datetime
 from typing import Optional, Dict
+from app.db.database import SessionLocal
+from app.models.order import Order
 
 class BrokerService:
-    # Thread-safe in-memory cache of executed idempotency keys (simulating broker-side ledger)
+    # In-memory fallback cache
     _executed_receipts: Dict[str, dict] = {}
 
     @classmethod
@@ -31,9 +33,30 @@ class BrokerService:
         if quantity <= 0:
             raise ValueError("quantity must be greater than zero")
 
-        # True Idempotency: return existing receipt if previously executed
-        if idempotency_key and idempotency_key in cls._executed_receipts:
-            return cls._executed_receipts[idempotency_key]
+        # 1. Durable Idempotency: Check database first if key exists
+        if idempotency_key:
+            db = SessionLocal()
+            try:
+                existing_order = db.query(Order).filter(Order.idempotency_key == idempotency_key).first()
+                if existing_order:
+                    return {
+                        "order_id": existing_order.order_id,
+                        "status": existing_order.status,
+                        "timestamp": existing_order.timestamp,
+                        "user_id": existing_order.user_id,
+                        "ticker": existing_order.ticker,
+                        "action": existing_order.action,
+                        "quantity": float(existing_order.quantity),
+                        "idempotency_key": existing_order.idempotency_key
+                    }
+            except Exception:
+                pass
+            finally:
+                db.close()
+
+            # 2. Check in-memory ledger
+            if idempotency_key in cls._executed_receipts:
+                return cls._executed_receipts[idempotency_key]
 
         order_id = f"ord-{uuid.uuid4().hex[:12]}"
         now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
