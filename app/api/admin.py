@@ -9,11 +9,21 @@ from app.workers.rebalance_worker import rebalance_worker
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
-@router.post("/rebalance", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/rebalance",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Trigger Asynchronous Folio Rebalance",
+    description="Swap a stock inside a Folio (e.g. replace `RELIANCE` with `IDEA`). Atomically updates the Folio composition and enqueues durable background rebalance tasks for all active subscribers.",
+    responses={
+        202: {"description": "Rebalance request accepted and fan-out cascade queued asynchronously."},
+        400: {"description": "Validation error (e.g. outgoing stock missing or incoming stock duplicate)."},
+        404: {"description": "Target Folio not found."},
+        409: {"description": "Rebalance conflict: Folio is currently undergoing another rebalancing operation."}
+    }
+)
 def trigger_rebalance(payload: RebalanceRequest, db: Session = Depends(get_db)):
     """
-    Trigger stock rebalancing inside a Folio.
-    Updates the folio composition, saves durable task records, and schedules an asynchronous cascade.
+    Triggers an asynchronous stock replacement cascade across all active subscribers of a Folio.
     """
     # 1. Fetch and validate folio
     folio = db.query(Folio).filter(Folio.id == payload.folio_id).first()
@@ -119,9 +129,13 @@ def trigger_rebalance(payload: RebalanceRequest, db: Session = Depends(get_db)):
         "active_subscribers_queued": len(active_subs)
     }
 
-@router.get("/queue")
+@router.get(
+    "/queue",
+    summary="Get Worker Queue Diagnostics",
+    description="Retrieve live telemetry and queue counts for background rebalance tasks (`pending`, `processing`, `completed`, `failed`)."
+)
 def get_queue_status():
     """
-    Get the durable status and metrics of the background rebalancing task worker.
+    Returns real-time worker execution diagnostics and queue metrics.
     """
     return rebalance_worker.get_metrics()

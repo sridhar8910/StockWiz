@@ -18,6 +18,42 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 INDEX_HTML_PATH = STATIC_DIR / "index.html"
 
+# OpenAPI Tag Metadata
+tags_metadata = [
+    {
+        "name": "Folios",
+        "description": "Browse and query curated **12-stock baskets** (Folios) with predefined base quantities and version tracking.",
+    },
+    {
+        "name": "Subscriptions",
+        "description": "User subscription lifecycle. Subscribe with configurable multipliers (`1x`, `2x`, `3x`, `5x`), generating **12 atomic BUY orders**, or exit to trigger **12 liquidating SELL orders**.",
+    },
+    {
+        "name": "Orders",
+        "description": "Audit trail of immutable execution receipts from the synthetic broker. Supports user search and real-time feed streaming.",
+    },
+    {
+        "name": "Admin",
+        "description": "Folio composition management and asynchronous rebalancing. Swap stocks inside a Folio and trigger **durable background fan-out cascades** to all active subscribers.",
+    },
+]
+
+APP_DESCRIPTION = """
+### 🚀 StockWiz — Basket-Trading & Auto-Rebalancing Trading System
+
+StockWiz is a high-throughput, stateful basket-trading engine built with **FastAPI**, **SQLAlchemy**, and an **asynchronous durable worker queue**.
+
+---
+
+### 🔑 Core Architectural Features:
+* **Curated 12-Stock Folios**: 7 distinct thematic equity baskets pre-seeded with strict domain invariants.
+* **Proportional Position Sizing**: Order quantity is deterministically calculated as $\\text{Order Quantity} = \\text{Base Quantity} \\times \\text{User Multiplier}$.
+* **Asynchronous Rebalancing Cascade**: Admin stock replacements return `202 Accepted` immediately, delegating execution to a durable worker.
+* **Database-Backed Task Durability**: Background tasks are persisted in SQLite/PostgreSQL with automatic crash recovery across restarts.
+* **True Broker Idempotency**: Trade executions check database idempotency keys before placement to guarantee at-least-once recovery without double-fills.
+* **Optimistic Concurrency Protection**: Rebalancing operations lock the target Folio with `is_rebalancing` and bump `version_id`.
+"""
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Initialize DB schema & apply lightweight SQLite migrations
@@ -40,9 +76,12 @@ async def lifespan(app: FastAPI):
     await rebalance_worker.stop()
 
 app = FastAPI(
-    title="StockWiz Folio Trading & Auto-Rebalancing System",
-    description="Senior Full-Stack Developer Assessment Prototype",
+    title="StockWiz API — Basket-Trading & Auto-Rebalancing System",
+    description=APP_DESCRIPTION,
     version="1.0.0",
+    openapi_tags=tags_metadata,
+    docs_url="/docs",
+    redoc_url="/redoc",
     lifespan=lifespan
 )
 
@@ -56,7 +95,7 @@ app.include_router(admin_router)
 os.makedirs(STATIC_DIR, exist_ok=True)
 
 # Serve Frontend at Root
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def get_frontend():
     return FileResponse(INDEX_HTML_PATH)
 
