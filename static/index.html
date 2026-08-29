@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockWiz - Folio Basket Trading & Auto-Rebalancing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .feed-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .feed-container::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .feed-container::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .feed-container::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+    <!-- Header -->
+    <header class="bg-slate-850 border-b border-slate-700 py-4 px-6 shadow-lg">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid class fa-chart-line text-emerald-400 text-3xl"></i>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight text-white">Stock<span class="text-emerald-400">Wiz</span></h1>
+                    <p class="text-xs text-slate-400">Folio Management & Auto-Rebalancing Trading System</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <a href="/docs" target="_blank" class="text-xs bg-slate-800 hover:bg-slate-750 text-slate-300 py-1.5 px-3 rounded-md border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-code"></i> Swagger OpenAPI Docs
+                </a>
+                <div class="text-xs bg-slate-800 text-slate-400 py-1.5 px-3 rounded-md border border-slate-700 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Broker: Simulated (Active)</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+
+        <!-- Upper Grid: User and Admin Views -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- ================= USER VIEW ================= -->
+            <section class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-md flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center border-b border-slate-700 pb-3 mb-4">
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-user text-emerald-400"></i> User Workspace
+                        </h2>
+                        <div class="flex items-center gap-2">
+                            <label for="userIdInput" class="text-xs text-slate-400 font-semibold">User ID:</label>
+                            <input type="text" id="userIdInput" value="user-101" class="w-32 bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-sm font-semibold text-emerald-300 focus:outline-none focus:border-emerald-500 transition">
+                        </div>
+                    </div>
+
+                    <!-- Subscription Form -->
+                    <div class="bg-slate-850 p-4 rounded-lg border border-slate-750 mb-6">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Subscribe to a Folio</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Select Folio</label>
+                                <select id="userFolioSelect" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                                    <!-- Populated dynamically -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Multiplier (x)</label>
+                                <select id="userMultiplierSelect" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                                    <option value="1">1x Multiplier</option>
+                                    <option value="2">2x Multiplier</option>
+                                    <option value="3" selected>3x Multiplier</option>
+                                    <option value="5">5x Multiplier</option>
+                                    <option value="10">10x Multiplier</option>
+                                </select>
+                            </div>
+                            <button id="btnSubscribe" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-4 rounded text-sm transition flex items-center justify-center gap-2 shadow shadow-emerald-900/50">
+                                <i class="fa-solid fa-cart-plus"></i> SUBSCRIBE
+                            </button>
+                        </div>
+                        <div id="userFeedback" class="mt-3 text-xs hidden"></div>
+                    </div>
+
+                    <!-- Active Subscriptions -->
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Active Subscriptions</h3>
+                        <div id="activeSubsContainer" class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ================= ADMIN VIEW ================= -->
+            <section class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-md flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center border-b border-slate-700 pb-3 mb-4">
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-user-gear text-amber-400"></i> Admin Control Terminal
+                        </h2>
+                        <!-- Worker telemetry -->
+                        <div id="queueStatusBadge" class="text-xs bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-slate-400 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-500" id="queueLed"></span>
+                            <span id="queueText">Queue Idle</span>
+                        </div>
+                    </div>
+
+                    <!-- Swap Form -->
+                    <div class="bg-slate-850 p-4 rounded-lg border border-slate-750 mb-6">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Swap Stock / Rebalance</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Target Folio</label>
+                                <select id="adminFolioSelect" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
+                                    <!-- Populated dynamically -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Existing Stock to Replace</label>
+                                <select id="adminOutgoingSelect" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
+                                    <!-- Populated dynamically based on chosen folio -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Replace With (New Ticker)</label>
+                                <input type="text" id="adminIncomingInput" value="IDEA" placeholder="e.g. IDEA" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200 uppercase focus:outline-none focus:border-amber-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">New Base Quantity</label>
+                                <input type="number" id="adminQuantityInput" value="2" min="0.1" step="any" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
+                            </div>
+                        </div>
+                        <button id="btnTriggerRebalance" class="w-full mt-4 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-4 rounded text-sm transition flex items-center justify-center gap-2 shadow shadow-amber-900/50">
+                            <i class="fa-solid fa-right-left"></i> TRIGGER CASCADE REBALANCE
+                        </button>
+                    </div>
+
+                    <!-- Confirmation log -->
+                    <div id="adminFeedback" class="p-3 bg-slate-900 border border-slate-750 rounded text-xs text-slate-300 hidden">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Folio List Viewer (Read-only reference) -->
+                <div class="mt-4 pt-4 border-t border-slate-750">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Current Folio Composition</h3>
+                    <div id="folioCompositionViewer" class="text-xs grid grid-cols-3 gap-2 bg-slate-900 p-3 rounded max-h-32 overflow-y-auto">
+                        <!-- Shows 12 stocks dynamically -->
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Lower Grid: Live Order Receipts Feed -->
+        <section class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-md">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-3 mb-4">
+                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-receipt text-sky-400"></i> Platform Execution Receipts Feed
+                </h2>
+                <div class="flex gap-4">
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="chkFilterUserOrders" class="rounded bg-slate-900 border-slate-750 text-sky-500 focus:ring-sky-500">
+                        <label for="chkFilterUserOrders" class="text-xs text-slate-350 cursor-pointer">Filter to Active User ID</label>
+                    </div>
+                    <button id="btnClearFeed" class="text-xs bg-slate-700 hover:bg-slate-650 text-slate-300 py-1 px-2.5 rounded transition">
+                        Clear Display
+                    </button>
+                </div>
+            </div>
+
+            <!-- Feed Table -->
+            <div class="overflow-x-auto">
+                <div class="max-h-96 overflow-y-auto feed-container border border-slate-750 rounded">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-900 sticky top-0 text-slate-400 text-xs uppercase font-bold tracking-wider">
+                            <tr>
+                                <th class="py-3 px-4">Timestamp</th>
+                                <th class="py-3 px-4">Order ID</th>
+                                <th class="py-3 px-4">User</th>
+                                <th class="py-3 px-4">Action</th>
+                                <th class="py-3 px-4">Ticker</th>
+                                <th class="py-3 px-4">Qty</th>
+                                <th class="py-3 px-4">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordersTableBody" class="text-xs divide-y divide-slate-750 text-slate-300">
+                            <!-- Populated dynamically -->
+                            <tr id="emptyOrdersRow">
+                                <td colspan="7" class="py-8 text-center text-slate-500">
+                                    No orders executed yet. Try subscribing to a Folio.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center py-6 text-slate-500 text-xs max-w-7xl mx-auto border-t border-slate-800 mt-8">
+        <p>StockWiz Basket-Trading System. Designed for Senior Full-Stack Assessment evaluation.</p>
+    </footer>
+
+    <!-- Script logic -->
+    <script>
+        // State variables
+        let folios = [];
+        let subscriptions = [];
+        let executedOrdersMap = new Map(); // to deduplicate polling orders
+        let lastUserVal = "";
+
+        // Elements
+        const userIdInput = document.getElementById("userIdInput");
+        const userFolioSelect = document.getElementById("userFolioSelect");
+        const userMultiplierSelect = document.getElementById("userMultiplierSelect");
+        const btnSubscribe = document.getElementById("btnSubscribe");
+        const activeSubsContainer = document.getElementById("activeSubsContainer");
+        const userFeedback = document.getElementById("userFeedback");
+
+        const adminFolioSelect = document.getElementById("adminFolioSelect");
+        const adminOutgoingSelect = document.getElementById("adminOutgoingSelect");
+        const adminIncomingInput = document.getElementById("adminIncomingInput");
+        const adminQuantityInput = document.getElementById("adminQuantityInput");
+        const btnTriggerRebalance = document.getElementById("btnTriggerRebalance");
+        const adminFeedback = document.getElementById("adminFeedback");
+        const folioCompositionViewer = document.getElementById("folioCompositionViewer");
+        
+        const queueLed = document.getElementById("queueLed");
+        const queueText = document.getElementById("queueText");
+
+        const ordersTableBody = document.getElementById("ordersTableBody");
+        const emptyOrdersRow = document.getElementById("emptyOrdersRow");
+        const chkFilterUserOrders = document.getElementById("chkFilterUserOrders");
+        const btnClearFeed = document.getElementById("btnClearFeed");
+
+        // Initialization
+        window.addEventListener("DOMContentLoaded", async () => {
+            const cachedUser = localStorage.getItem("stockwiz_user_id");
+            if (cachedUser) {
+                userIdInput.value = cachedUser;
+            }
+            
+            await fetchFolios();
+            populateFolioSelectors();
+            updateAdminFolioDetail();
+            
+            // Poll data every 1500ms
+            setInterval(pollPlatformState, 1500);
+            
+            // Load initial state
+            pollPlatformState();
+        });
+
+        // Event listeners
+        userIdInput.addEventListener("input", () => {
+            const val = userIdInput.value.trim();
+            if (val) {
+                localStorage.setItem("stockwiz_user_id", val);
+            }
+            if (val !== lastUserVal) {
+                lastUserVal = val;
+                fetchUserSubscriptions();
+            }
+        });
+        
+        adminFolioSelect.addEventListener("change", () => {
+            updateAdminFolioDetail();
+        });
+
+        chkFilterUserOrders.addEventListener("change", () => {
+            // Force redraw of orders
+            drawOrdersFeed();
+        });
+
+        btnClearFeed.addEventListener("click", () => {
+            executedOrdersMap.clear();
+            drawOrdersFeed();
+        });
+
+        // Fetch all folios
+        async function fetchFolios() {
+            try {
+                const res = await fetch("/api/folios");
+                if (res.ok) {
+                    folios = await res.json();
+                }
+            } catch (err) {
+                console.error("Error fetching folios:", err);
+            }
+        }
+
+        // Populate Folio selectors in UI
+        function populateFolioSelectors() {
+            userFolioSelect.innerHTML = "";
+            adminFolioSelect.innerHTML = "";
+            folios.forEach(f => {
+                const optUser = document.createElement("option");
+                optUser.value = f.id;
+                optUser.textContent = f.name;
+                userFolioSelect.appendChild(optUser);
+
+                const optAdmin = document.createElement("option");
+                optAdmin.value = f.id;
+                optAdmin.textContent = f.name;
+                adminFolioSelect.appendChild(optAdmin);
+            });
+        }
+
+        // Update Admin View with composition of selected Folio
+        function updateAdminFolioDetail() {
+            const selectedFolioId = parseInt(adminFolioSelect.value);
+            const folio = folios.find(f => f.id === selectedFolioId);
+            if (!folio) return;
+
+            // Populate outgoing stocks dropdown
+            adminOutgoingSelect.innerHTML = "";
+            folio.stocks.forEach(stock => {
+                const opt = document.createElement("option");
+                opt.value = stock.ticker;
+                opt.textContent = `${stock.ticker} (Base: ${stock.base_quantity})`;
+                adminOutgoingSelect.appendChild(opt);
+            });
+
+            // Populate preview composition grid
+            folioCompositionViewer.innerHTML = "";
+            folio.stocks.forEach(stock => {
+                const div = document.createElement("div");
+                div.className = "bg-slate-800/80 p-1.5 rounded border border-slate-700 flex justify-between items-center";
+                div.innerHTML = `<span class="font-semibold text-slate-300">${stock.ticker}</span><span class="bg-slate-700 text-slate-400 px-1 py-0.5 rounded text-[10px]">${stock.base_quantity}</span>`;
+                folioCompositionViewer.appendChild(div);
+            });
+        }
+
+        // Fetch current active user subscriptions
+        async function fetchUserSubscriptions() {
+            const userId = userIdInput.value.trim();
+            if (!userId) {
+                activeSubsContainer.innerHTML = `<p class="text-xs text-slate-500 italic">Enter a User ID to view active folios</p>`;
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/users/${encodeURIComponent(userId)}/subscriptions`);
+                if (res.ok) {
+                    subscriptions = await res.json();
+                    drawSubscriptions();
+                }
+            } catch (err) {
+                console.error("Error fetching user subscriptions:", err);
+            }
+        }
+
+        // Draw active subscriptions
+        function drawSubscriptions() {
+            activeSubsContainer.innerHTML = "";
+            const activeSubs = subscriptions.filter(s => s.active);
+            
+            if (activeSubs.length === 0) {
+                activeSubsContainer.innerHTML = `<p class="text-xs text-slate-500 italic">No active folios for this user.</p>`;
+                return;
+            }
+
+            activeSubs.forEach(sub => {
+                const item = document.createElement("div");
+                item.className = "bg-slate-850 p-3 rounded-lg border border-slate-750 flex justify-between items-center";
+                item.innerHTML = `
+                    <div>
+                        <div class="font-bold text-white text-sm">${sub.folio_name || ('Folio ' + sub.folio_id)}</div>
+                        <div class="text-xs text-slate-405 flex items-center gap-3">
+                            <span class="text-emerald-400 font-semibold">${sub.multiplier}x Multiplier</span>
+                            <span class="text-slate-500">ID: ${sub.id}</span>
+                        </div>
+                    </div>
+                    <button onclick="exitFolio(${sub.id})" class="bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs py-1 px-3 rounded transition flex items-center gap-1">
+                        <i class="fa-solid fa-right-from-bracket"></i> EXIT
+                    </button>
+                `;
+                activeSubsContainer.appendChild(item);
+            });
+        }
+
+        // Action: Subscribe
+        btnSubscribe.addEventListener("click", async () => {
+            const userId = userIdInput.value.trim();
+            const folioId = parseInt(userFolioSelect.value);
+            const multiplier = parseFloat(userMultiplierSelect.value);
+
+            if (!userId) {
+                showUserFeedback("User ID is required!", "error");
+                return;
+            }
+
+            btnSubscribe.disabled = true;
+            btnSubscribe.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> SUBSCRIBING...`;
+            showUserFeedback("", "clear");
+
+            try {
+                const res = await fetch("/api/subscriptions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_id: userId, folio_id: folioId, multiplier: multiplier })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    showUserFeedback(`Successfully subscribed to '${data.subscription.folio_name}'!`, "success");
+                    // Add returned orders to our map so they display immediately
+                    data.orders.forEach(o => executedOrdersMap.set(o.order_id, o));
+                    drawOrdersFeed();
+                    await fetchUserSubscriptions();
+                } else {
+                    showUserFeedback(data.detail || "Subscription failed.", "error");
+                }
+            } catch (err) {
+                showUserFeedback("Network error occurred.", "error");
+                console.error(err);
+            } finally {
+                btnSubscribe.disabled = false;
+                btnSubscribe.innerHTML = `<i class="fa-solid fa-cart-plus"></i> SUBSCRIBE`;
+            }
+        });
+
+        // Action: Exit Folio
+        async function exitFolio(subId) {
+            if (!confirm(`Are you sure you want to exit subscription ID ${subId}? This will execute 12 SELL orders to liquidate all positions.`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/subscriptions/${subId}/exit`, { method: "POST" });
+                const data = await res.json();
+                if (res.ok) {
+                    showUserFeedback(`Exited subscription successfully!`, "success");
+                    // Append orders
+                    data.orders.forEach(o => executedOrdersMap.set(o.order_id, o));
+                    drawOrdersFeed();
+                    await fetchUserSubscriptions();
+                } else {
+                    showUserFeedback(data.detail || "Failed to exit subscription.", "error");
+                }
+            } catch (err) {
+                showUserFeedback("Error sending exit request.", "error");
+                console.error(err);
+            }
+        }
+
+        // Action: Trigger Rebalance
+        btnTriggerRebalance.addEventListener("click", async () => {
+            const folioId = parseInt(adminFolioSelect.value);
+            const outgoingTicker = adminOutgoingSelect.value;
+            const incomingTicker = adminIncomingInput.value.trim().toUpperCase();
+            const newQty = parseFloat(adminQuantityInput.value);
+
+            if (!incomingTicker) {
+                showAdminFeedback("Incoming ticker is required!", "error");
+                return;
+            }
+            if (isNaN(newQty) || newQty <= 0) {
+                showAdminFeedback("Quantity must be a positive number!", "error");
+                return;
+            }
+
+            btnTriggerRebalance.disabled = true;
+            btnTriggerRebalance.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> QUEUING REBALANCE...`;
+            showAdminFeedback("", "clear");
+
+            try {
+                const res = await fetch("/api/admin/rebalance", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        folio_id: folioId,
+                        outgoing_ticker: outgoingTicker,
+                        incoming_ticker: incomingTicker,
+                        new_base_quantity: newQty
+                    })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    showAdminFeedback(
+                        `<strong>Rebalance triggered successfully.</strong><br>` +
+                        `Swap: ${data.outgoing_ticker} &rarr; ${data.incoming_ticker}<br>` +
+                        `Active subscribers queued: <strong>${data.active_subscribers_queued}</strong>`,
+                        "success"
+                    );
+                    
+                    // Refresh folios list to reflect new composition in dropdowns
+                    await fetchFolios();
+                    updateAdminFolioDetail();
+                } else {
+                    showAdminFeedback(data.detail || "Rebalancing request rejected.", "error");
+                }
+            } catch (err) {
+                showAdminFeedback("Network error triggering rebalance.", "error");
+                console.error(err);
+            } finally {
+                btnTriggerRebalance.disabled = false;
+                btnTriggerRebalance.innerHTML = `<i class="fa-solid fa-right-left"></i> TRIGGER CASCADE REBALANCE`;
+            }
+        });
+
+        // Feedback display helper (User Panel)
+        function showUserFeedback(message, type) {
+            userFeedback.classList.remove("hidden", "bg-emerald-950/80", "border-emerald-700", "text-emerald-300", "bg-rose-950/80", "border-rose-700", "text-rose-300");
+            if (type === "clear") {
+                userFeedback.classList.add("hidden");
+                return;
+            }
+
+            userFeedback.classList.remove("hidden");
+            if (type === "success") {
+                userFeedback.classList.add("bg-emerald-950/80", "border", "border-emerald-700", "text-emerald-300", "p-2.5", "rounded");
+                userFeedback.innerHTML = `<i class="fa-solid fa-circle-check"></i> ` + message;
+            } else {
+                userFeedback.classList.add("bg-rose-950/80", "border", "border-rose-700", "text-rose-300", "p-2.5", "rounded");
+                userFeedback.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ` + message;
+            }
+        }
+
+        // Feedback display helper (Admin Panel)
+        function showAdminFeedback(message, type) {
+            adminFeedback.classList.remove("hidden", "bg-emerald-950/80", "border-emerald-700", "text-emerald-300", "bg-rose-950/80", "border-rose-700", "text-rose-300");
+            if (type === "clear") {
+                adminFeedback.classList.add("hidden");
+                return;
+            }
+
+            adminFeedback.classList.remove("hidden");
+            if (type === "success") {
+                adminFeedback.classList.add("bg-emerald-950/80", "border", "border-emerald-700", "text-emerald-300");
+                adminFeedback.innerHTML = message;
+            } else {
+                adminFeedback.classList.add("bg-rose-950/80", "border", "border-rose-700", "text-rose-300");
+                adminFeedback.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ` + message;
+            }
+        }
+
+        // Draw the execution receipts feed list
+        function drawOrdersFeed() {
+            const filteredToUser = chkFilterUserOrders.checked;
+            const currentUserId = userIdInput.value.trim().toLowerCase();
+
+            // Extract values and sort by timestamp desc
+            let list = Array.from(executedOrdersMap.values());
+            list.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            if (filteredToUser && currentUserId) {
+                list = list.filter(o => o.user_id.toLowerCase() === currentUserId);
+            }
+
+            if (list.length === 0) {
+                emptyOrdersRow.classList.remove("hidden");
+                // Remove all rows except the empty one
+                const rows = ordersTableBody.querySelectorAll("tr:not(#emptyOrdersRow)");
+                rows.forEach(r => r.remove());
+                return;
+            }
+
+            emptyOrdersRow.classList.add("hidden");
+
+            // Build fresh HTML to preserve sorted sequence without duplicate DOM inserts
+            const rowsHtml = list.map(o => {
+                const actionClass = o.action === "BUY" ? "text-emerald-400 bg-emerald-950/50 border-emerald-800" : "text-rose-400 bg-rose-950/50 border-rose-800";
+                const statusClass = "text-emerald-300 bg-emerald-950/30 border border-emerald-900";
+                const formattedTime = new Date(o.timestamp).toLocaleTimeString();
+                
+                return `
+                    <tr class="hover:bg-slate-800/50 transition">
+                        <td class="py-2.5 px-4 font-mono text-[10px] text-slate-500">${formattedTime}</td>
+                        <td class="py-2.5 px-4 font-mono text-slate-400">${o.order_id}</td>
+                        <td class="py-2.5 px-4 text-emerald-300 font-semibold">${o.user_id}</td>
+                        <td class="py-2.5 px-4">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${actionClass}">${o.action}</span>
+                        </td>
+                        <td class="py-2.5 px-4 font-bold text-white">${o.ticker}</td>
+                        <td class="py-2.5 px-4 font-semibold text-slate-200">${o.quantity}</td>
+                        <td class="py-2.5 px-4">
+                            <span class="px-1.5 py-0.5 rounded text-[10px] ${statusClass}">${o.status}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+
+            // Replace body content (retaining the hidden empty row for fallback)
+            ordersTableBody.innerHTML = `<tr id="emptyOrdersRow" class="hidden"><td colspan="7" class="py-8 text-center text-slate-500">No orders executed yet. Try subscribing to a Folio.</td></tr>` + rowsHtml;
+        }
+
+        // General polling routine for active state and telemetry
+        async function pollPlatformState() {
+            // 1. Fetch user subscriptions if any user input exists
+            fetchUserSubscriptions();
+
+            // 2. Fetch recent orders to append to feed
+            try {
+                const res = await fetch("/api/orders?limit=150");
+                if (res.ok) {
+                    const latestOrders = await res.json();
+                    let updated = false;
+                    latestOrders.forEach(o => {
+                        if (!executedOrdersMap.has(o.order_id)) {
+                            executedOrdersMap.set(o.order_id, o);
+                            updated = true;
+                        }
+                    });
+                    if (updated) {
+                        drawOrdersFeed();
+                    }
+                }
+            } catch (err) {
+                console.error("Error polling orders:", err);
+            }
+
+            // 3. Poll background rebalance worker status
+            try {
+                const res = await fetch("/api/admin/queue");
+                if (res.ok) {
+                    const q = await res.json();
+                    
+                    // Update LED indicator
+                    queueLed.className = "w-1.5 h-1.5 rounded-full";
+                    if (q.pending_count > 0) {
+                        queueLed.classList.add("bg-amber-500", "animate-pulse");
+                        queueText.textContent = `Processing (${q.pending_count} pending, ${q.completed_count} completed)`;
+                        queueStatusBadge.className = "text-xs bg-slate-900 border border-amber-900/50 rounded px-2.5 py-1 text-amber-300 flex items-center gap-1.5";
+                    } else {
+                        queueLed.classList.add("bg-emerald-500");
+                        queueText.textContent = `Durable Queue Idle (Total tasks: ${q.total_queued || q.completed_count})`;
+                        queueStatusBadge.className = "text-xs bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-slate-400 flex items-center gap-1.5";
+                    }
+                }
+            } catch (err) {
+                console.error("Error polling queue status:", err);
+            }
+        }
+    </script>
+</body>
+</html>
