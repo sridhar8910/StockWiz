@@ -40,6 +40,11 @@ def run_migrations(engine):
             if "idempotency_key" not in columns:
                 conn.execute(text("ALTER TABLE orders ADD COLUMN idempotency_key VARCHAR"))
 
+        if "rebalance_tasks" in table_names:
+            columns = [col["name"] for col in inspector.get_columns("rebalance_tasks")]
+            if "next_retry_at" not in columns:
+                conn.execute(text("ALTER TABLE rebalance_tasks ADD COLUMN next_retry_at DATETIME"))
+
 def get_db():
     db = SessionLocal()
     try:
