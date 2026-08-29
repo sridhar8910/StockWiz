@@ -1,10 +1,19 @@
 import uuid
 import datetime
-from typing import Optional
+from typing import Optional, Dict
 
 class BrokerService:
-    @staticmethod
+    # Thread-safe in-memory cache of executed idempotency keys (simulating broker-side ledger)
+    _executed_receipts: Dict[str, dict] = {}
+
+    @classmethod
+    def reset_cache(cls) -> None:
+        """Helper to clear broker cache in test suites."""
+        cls._executed_receipts.clear()
+
+    @classmethod
     def execute_trade(
+        cls,
         user_id: str,
         ticker: str,
         action: str,
@@ -22,10 +31,14 @@ class BrokerService:
         if quantity <= 0:
             raise ValueError("quantity must be greater than zero")
 
+        # True Idempotency: return existing receipt if previously executed
+        if idempotency_key and idempotency_key in cls._executed_receipts:
+            return cls._executed_receipts[idempotency_key]
+
         order_id = f"ord-{uuid.uuid4().hex[:12]}"
         now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         
-        return {
+        receipt = {
             "order_id": order_id,
             "status": "EXECUTED",
             "timestamp": now_utc,
@@ -35,3 +48,8 @@ class BrokerService:
             "quantity": float(quantity),
             "idempotency_key": idempotency_key
         }
+
+        if idempotency_key:
+            cls._executed_receipts[idempotency_key] = receipt
+
+        return receipt

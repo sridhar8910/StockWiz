@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import logging
 from typing import Dict, Any
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.services.broker_service import BrokerService
@@ -111,19 +112,35 @@ class RebalanceWorker:
             db.close()
 
     async def _process_next_batch(self) -> bool:
+        """Atomically claims a pending task to prevent multi-worker race conditions."""
         db: Session = SessionLocal()
         task_id = None
+        now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         try:
-            task = db.query(RebalanceTaskRecord).filter(RebalanceTaskRecord.status == "PENDING").order_by(RebalanceTaskRecord.id).first()
-            if not task:
+            # Query candidate task
+            candidate = db.query(RebalanceTaskRecord).filter(
+                RebalanceTaskRecord.status == "PENDING",
+                (RebalanceTaskRecord.next_retry_at == None) | (RebalanceTaskRecord.next_retry_at <= now_utc)
+            ).order_by(RebalanceTaskRecord.id).first()
+
+            if not candidate:
                 return False
 
-            task.status = "PROCESSING"
+            # Atomic conditional claim: update status to PROCESSING only if still PENDING
+            claim_query = text(
+                "UPDATE rebalance_tasks SET status = 'PROCESSING' WHERE id = :task_id AND status = 'PENDING'"
+            )
+            result = db.execute(claim_query, {"task_id": candidate.id})
             db.commit()
-            task_id = task.id
+
+            if result.rowcount > 0:
+                task_id = candidate.id
+            else:
+                # Another worker claimed it first
+                return True
         except Exception as e:
             db.rollback()
-            logger.error(f"Error fetching pending task: {e}")
+            logger.error(f"Error atomically claiming pending task: {e}")
             return False
         finally:
             db.close()
@@ -149,51 +166,57 @@ class RebalanceWorker:
                 self._check_folio_rebalance_complete(db, task.folio_id)
                 return
 
-            # Execute Step 1: SELL outgoing stock
-            sell_qty = task.outgoing_base_qty * task.multiplier
+            # Step 1: SELL outgoing stock with idempotency guard
             sell_idemp = f"rebal-{task.id}-{task.outgoing_ticker}-SELL"
-            sell_receipt = BrokerService.execute_trade(
-                user_id=task.user_id,
-                ticker=task.outgoing_ticker,
-                action="SELL",
-                quantity=sell_qty,
-                idempotency_key=sell_idemp
-            )
-            sell_order = Order(
-                order_id=sell_receipt["order_id"],
-                user_id=task.user_id,
-                subscription_id=task.subscription_id,
-                ticker=task.outgoing_ticker,
-                action="SELL",
-                quantity=sell_qty,
-                status=sell_receipt["status"],
-                idempotency_key=sell_idemp,
-                timestamp=sell_receipt["timestamp"]
-            )
-            db.add(sell_order)
+            existing_sell = db.query(Order).filter(Order.idempotency_key == sell_idemp).first()
+            if not existing_sell:
+                sell_qty = task.outgoing_base_qty * task.multiplier
+                sell_receipt = BrokerService.execute_trade(
+                    user_id=task.user_id,
+                    ticker=task.outgoing_ticker,
+                    action="SELL",
+                    quantity=sell_qty,
+                    idempotency_key=sell_idemp
+                )
+                sell_order = Order(
+                    order_id=sell_receipt["order_id"],
+                    user_id=task.user_id,
+                    subscription_id=task.subscription_id,
+                    ticker=task.outgoing_ticker,
+                    action="SELL",
+                    quantity=sell_qty,
+                    status=sell_receipt["status"],
+                    idempotency_key=sell_idemp,
+                    timestamp=sell_receipt["timestamp"]
+                )
+                db.add(sell_order)
+                db.flush()
 
-            # Execute Step 2: BUY incoming stock
-            buy_qty = task.incoming_base_qty * task.multiplier
+            # Step 2: BUY incoming stock with idempotency guard
             buy_idemp = f"rebal-{task.id}-{task.incoming_ticker}-BUY"
-            buy_receipt = BrokerService.execute_trade(
-                user_id=task.user_id,
-                ticker=task.incoming_ticker,
-                action="BUY",
-                quantity=buy_qty,
-                idempotency_key=buy_idemp
-            )
-            buy_order = Order(
-                order_id=buy_receipt["order_id"],
-                user_id=task.user_id,
-                subscription_id=task.subscription_id,
-                ticker=task.incoming_ticker,
-                action="BUY",
-                quantity=buy_qty,
-                status=buy_receipt["status"],
-                idempotency_key=buy_idemp,
-                timestamp=buy_receipt["timestamp"]
-            )
-            db.add(buy_order)
+            existing_buy = db.query(Order).filter(Order.idempotency_key == buy_idemp).first()
+            if not existing_buy:
+                buy_qty = task.incoming_base_qty * task.multiplier
+                buy_receipt = BrokerService.execute_trade(
+                    user_id=task.user_id,
+                    ticker=task.incoming_ticker,
+                    action="BUY",
+                    quantity=buy_qty,
+                    idempotency_key=buy_idemp
+                )
+                buy_order = Order(
+                    order_id=buy_receipt["order_id"],
+                    user_id=task.user_id,
+                    subscription_id=task.subscription_id,
+                    ticker=task.incoming_ticker,
+                    action="BUY",
+                    quantity=buy_qty,
+                    status=buy_receipt["status"],
+                    idempotency_key=buy_idemp,
+                    timestamp=buy_receipt["timestamp"]
+                )
+                db.add(buy_order)
+                db.flush()
 
             task.status = "COMPLETED"
             task.completed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
@@ -209,7 +232,13 @@ class RebalanceWorker:
                 t = db_fail.query(RebalanceTaskRecord).filter(RebalanceTaskRecord.id == task_id).first()
                 if t:
                     t.retries += 1
-                    t.status = "FAILED" if t.retries >= 3 else "PENDING"
+                    if t.retries >= 3:
+                        t.status = "FAILED"
+                    else:
+                        t.status = "PENDING"
+                        # Exponential backoff: 2s, 4s, 8s...
+                        delay = min(30, 2 ** t.retries)
+                        t.next_retry_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(seconds=delay)
                     t.error_message = str(e)
                     db_fail.commit()
                     self._check_folio_rebalance_complete(db_fail, t.folio_id)
@@ -220,7 +249,7 @@ class RebalanceWorker:
             db.close()
 
     def _check_folio_rebalance_complete(self, db: Session, folio_id: int) -> None:
-        """If all rebalance tasks for the folio are finished, release folio lock."""
+        """If all rebalance tasks for the folio are finished, release folio lock and update status."""
         try:
             remaining = db.query(RebalanceTaskRecord).filter(
                 RebalanceTaskRecord.folio_id == folio_id,
@@ -232,7 +261,15 @@ class RebalanceWorker:
                     folio.is_rebalancing = False
                     folio.version_id += 1
                     db.commit()
-                    logger.info(f"Folio {folio_id} rebalancing finished and lock released.")
+                    
+                    failed_count = db.query(RebalanceTaskRecord).filter(
+                        RebalanceTaskRecord.folio_id == folio_id,
+                        RebalanceTaskRecord.status == "FAILED"
+                    ).count()
+                    if failed_count > 0:
+                        logger.warning(f"Folio {folio_id} rebalancing finished with PARTIAL_FAILURE ({failed_count} failed tasks).")
+                    else:
+                        logger.info(f"Folio {folio_id} rebalancing COMPLETED successfully.")
         except Exception as e:
             logger.error(f"Error checking folio completion: {e}")
 

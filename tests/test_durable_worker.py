@@ -95,3 +95,29 @@ def test_durable_worker_crash_recovery(client):
         assert t.status == "COMPLETED"
     finally:
         db.close()
+
+def test_rebalance_zero_subscribers_bumps_version_id(client):
+    db = SessionLocal()
+    try:
+        folio = db.query(Folio).filter(Folio.id == 3).first()
+        initial_version = folio.version_id
+    finally:
+        db.close()
+
+    # Rebalance folio with 0 subscribers
+    res = client.post("/api/admin/rebalance", json={
+        "folio_id": 3,
+        "outgoing_ticker": "SBIN",
+        "incoming_ticker": "ITC"
+    })
+    assert res.status_code == 202
+    assert res.json()["active_subscribers_queued"] == 0
+
+    db = SessionLocal()
+    try:
+        folio = db.query(Folio).filter(Folio.id == 3).first()
+        assert folio.version_id == initial_version + 1
+        assert folio.is_rebalancing is False
+    finally:
+        db.close()
+

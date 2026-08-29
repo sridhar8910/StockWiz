@@ -17,5 +17,6 @@ class RebalanceTaskRecord(Base):
     status = Column(String, default="PENDING", index=True, nullable=False)  # PENDING, PROCESSING, COMPLETED, FAILED
     error_message = Column(String, nullable=True)
     retries = Column(Integer, default=0, nullable=False)
+    next_retry_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None), nullable=False)
     completed_at = Column(DateTime, nullable=True)

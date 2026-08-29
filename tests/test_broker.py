@@ -37,3 +37,15 @@ def test_execute_trade_invalid_parameters():
     # Zero quantity
     with pytest.raises(ValueError, match="quantity must be greater than zero"):
         BrokerService.execute_trade("user-101", "RELIANCE", "BUY", 0.0)
+
+def test_broker_idempotency_same_key_returns_same_receipt():
+    BrokerService.reset_cache()
+    key = "idemp-test-12345"
+    
+    receipt1 = BrokerService.execute_trade("user-101", "INFY", "BUY", 5.0, idempotency_key=key)
+    receipt2 = BrokerService.execute_trade("user-101", "INFY", "BUY", 5.0, idempotency_key=key)
+    
+    # Must return exact same order_id and receipt without duplicate execution
+    assert receipt1["order_id"] == receipt2["order_id"]
+    assert receipt1["timestamp"] == receipt2["timestamp"]
+

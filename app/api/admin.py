@@ -77,9 +77,12 @@ def trigger_rebalance(payload: RebalanceRequest, db: Session = Depends(get_db)):
             Subscription.active == True
         ).all()
 
-        # Set folio rebalancing lock if there are subscribers
+        # Set folio rebalancing lock if there are subscribers, otherwise bump version_id immediately
         if active_subs:
             folio.is_rebalancing = True
+        else:
+            folio.version_id += 1
+            folio.is_rebalancing = False
 
         # Insert durable task records into the database
         for sub in active_subs:
