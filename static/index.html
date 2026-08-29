@@ -3,144 +3,1086 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>StockWiz — Portfolio Console</title>
+  <title>StockWiz — Curated Basket-Trading & Portfolio OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
-          fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
-          colors: { ink: '#111827', paper: '#f7f7f5', line: '#e5e7eb', muted: '#6b7280', brand: '#111827', accent: '#2563eb' },
-          boxShadow: { soft: '0 8px 30px rgba(17,24,39,.06)', card: '0 2px 12px rgba(17,24,39,.05)' }
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace']
+          },
+          colors: {
+            ink: { DEFAULT: '#0F172A', muted: '#475569', light: '#64748B' },
+            canvas: '#F8FAFC',
+            surface: '#FFFFFF',
+            line: '#E2E8F0',
+            brand: { DEFAULT: '#0F172A', hover: '#1E293B' },
+            accent: { DEFAULT: '#2563EB', light: '#EFF6FF', dark: '#1D4ED8' },
+            success: { DEFAULT: '#059669', light: '#ECFDF5', text: '#065F46' },
+            danger: { DEFAULT: '#DC2626', light: '#FEF2F2', text: '#991B1B' },
+            warning: { DEFAULT: '#D97706', light: '#FFFBEB', text: '#92400E' }
+          }
         }
       }
     }
   </script>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; background: #f7f7f5; color: #111827; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-    .app-shell { min-height: 100vh; }
-    .sidebar { width: 240px; }
-    .nav-item { transition: .18s ease; }
-    .nav-item:hover { background: #f3f4f6; }
-    .nav-item.active { background: #111827; color: white; }
-    .panel { background: white; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 2px 12px rgba(17,24,39,.04); }
-    .btn { border-radius: 9px; font-weight: 650; transition: .18s ease; }
-    .btn-primary { background: #111827; color: white; }
-    .btn-primary:hover { background: #1f2937; transform: translateY(-1px); }
-    .btn-secondary { background: white; color: #374151; border: 1px solid #d1d5db; }
-    .btn-secondary:hover { background: #f9fafb; }
-    .field { width: 100%; border: 1px solid #d1d5db; border-radius: 9px; padding: 10px 12px; background: white; outline: none; }
-    .field:focus { border-color: #6b7280; box-shadow: 0 0 0 3px rgba(107,114,128,.12); }
-    .metric-value { letter-spacing: -.035em; }
-    .badge { display:inline-flex; align-items:center; border-radius:999px; padding:4px 9px; font-size:11px; font-weight:700; }
-    .table-row:hover { background: #fafafa; }
-    .toast { animation: slideIn .22s ease; }
-    @keyframes slideIn { from { transform: translateY(8px); opacity:0 } to { transform:translateY(0); opacity:1 } }
-    @media (max-width: 900px) { .sidebar { width: 76px; } .nav-label, .brand-copy, .side-note { display:none; } }
+    body { font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11'; }
+    .nav-btn.active { background: #0F172A; color: #FFFFFF; }
+    .nav-btn.active svg { color: #FFFFFF; }
+    .tab-btn.active { border-color: #0F172A; color: #0F172A; font-weight: 600; }
+    .fade-in { animation: fadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #F1F5F9; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
   </style>
 </head>
-<body>
-<div class="app-shell flex">
-  <aside class="sidebar shrink-0 min-h-screen bg-white border-r border-gray-200 px-3 py-5 flex flex-col">
-    <div class="px-3 mb-8 flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-gray-900 text-white flex items-center justify-center font-bold">S</div>
-      <div class="brand-copy"><div class="font-bold tracking-tight">StockWiz</div><div class="text-[10px] text-gray-400 uppercase tracking-widest">Portfolio OS</div></div>
+<body class="bg-canvas text-ink min-h-screen flex antialiased selection:bg-accent-light selection:text-accent-dark">
+
+  <!-- ================= SIDEBAR NAVIGATION ================= -->
+  <aside class="w-64 bg-surface border-r border-line flex flex-col shrink-0 min-h-screen sticky top-0 h-screen z-30">
+    <!-- Brand Header -->
+    <div class="h-16 flex items-center px-6 border-b border-line gap-3">
+      <div class="w-8 h-8 rounded-lg bg-ink text-white font-bold flex items-center justify-center text-sm tracking-tighter shadow-sm">
+        W
+      </div>
+      <div>
+        <div class="font-bold text-sm leading-none text-ink tracking-tight">StockWiz</div>
+        <div class="text-[10px] font-medium text-ink-light tracking-wider uppercase mt-1">Portfolio OS</div>
+      </div>
     </div>
-    <nav class="space-y-1">
-      <button class="nav-item active w-full px-3 py-2.5 rounded-lg flex items-center gap-3 text-sm" data-section="overview"><span>⌂</span><span class="nav-label">Overview</span></button>
-      <button class="nav-item w-full px-3 py-2.5 rounded-lg flex items-center gap-3 text-sm text-gray-600" data-section="folios"><span>▦</span><span class="nav-label">Folios</span></button>
-      <button class="nav-item w-full px-3 py-2.5 rounded-lg flex items-center gap-3 text-sm text-gray-600" data-section="subscriptions"><span>↗</span><span class="nav-label">Subscriptions</span></button>
-      <button class="nav-item w-full px-3 py-2.5 rounded-lg flex items-center gap-3 text-sm text-gray-600" data-section="orders"><span>≡</span><span class="nav-label">Orders</span></button>
-      <button class="nav-item w-full px-3 py-2.5 rounded-lg flex items-center gap-3 text-sm text-gray-600" data-section="admin"><span>⚙</span><span class="nav-label">Admin</span></button>
-    </nav>
-    <div class="mt-auto side-note px-3">
-      <div class="text-[10px] uppercase tracking-widest text-gray-400 mb-2">System</div>
-      <div class="flex items-center gap-2 text-xs text-gray-600"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Simulated broker online</div>
+
+    <!-- Navigation Links -->
+    <div class="flex-1 overflow-y-auto px-3 py-4 space-y-6 custom-scroll">
+      <div>
+        <div class="px-3 text-[10px] font-bold text-ink-light tracking-wider uppercase mb-1.5">INVEST</div>
+        <nav class="space-y-0.5">
+          <button onclick="navigate('overview')" class="nav-btn w-full px-3 py-2 rounded-lg text-xs font-medium text-ink-muted hover:bg-slate-100 flex items-center gap-2.5 transition active" data-view="overview">
+            <svg class="w-4 h-4 text-ink-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+            Overview
+          </button>
+          <button onclick="navigate('folios')" class="nav-btn w-full px-3 py-2 rounded-lg text-xs font-medium text-ink-muted hover:bg-slate-100 flex items-center gap-2.5 transition" data-view="folios">
+            <svg class="w-4 h-4 text-ink-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+            Explore Folios
+          </button>
+          <button onclick="navigate('portfolio')" class="nav-btn w-full px-3 py-2 rounded-lg text-xs font-medium text-ink-muted hover:bg-slate-100 flex items-center gap-2.5 transition" data-view="portfolio">
+            <svg class="w-4 h-4 text-ink-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            My Portfolio
+          </button>
+          <button onclick="navigate('orders')" class="nav-btn w-full px-3 py-2 rounded-lg text-xs font-medium text-ink-muted hover:bg-slate-100 flex items-center gap-2.5 transition" data-view="orders">
+            <svg class="w-4 h-4 text-ink-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+            Order Receipts
+          </button>
+        </nav>
+      </div>
+
+      <div>
+        <div class="px-3 text-[10px] font-bold text-ink-light tracking-wider uppercase mb-1.5">ACCOUNT</div>
+        <nav class="space-y-0.5">
+          <button onclick="navigate('subscriptions')" class="nav-btn w-full px-3 py-2 rounded-lg text-xs font-medium text-ink-muted hover:bg-slate-100 flex items-center gap-2.5 transition" data-view="subscriptions">
+            <svg class="w-4 h-4 text-ink-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+            Subscriptions
+          </button>
+        </nav>
+      </div>
+
+      <div>
+        <div class="px-3 text-[10px] font-bold text-ink-light tracking-wider uppercase mb-1.5">OPERATIONS</div>
+        <nav class="space-y-0.5">
+          <button onclick="navigate('rebalance')" class="nav-btn w-full px-3 py-2 rounded-lg text-xs font-medium text-ink-muted hover:bg-slate-100 flex items-center gap-2.5 transition" data-view="rebalance">
+            <svg class="w-4 h-4 text-ink-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+            Rebalance Console
+          </button>
+          <button onclick="navigate('queue')" class="nav-btn w-full px-3 py-2 rounded-lg text-xs font-medium text-ink-muted hover:bg-slate-100 flex items-center gap-2.5 transition" data-view="queue">
+            <svg class="w-4 h-4 text-ink-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Worker Telemetry
+          </button>
+        </nav>
+      </div>
+    </div>
+
+    <!-- Active User & Switcher Footer -->
+    <div class="p-3 border-t border-line bg-canvas">
+      <div class="bg-surface border border-line rounded-lg p-2.5 flex items-center justify-between shadow-sm">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-7 h-7 rounded-full bg-accent-light text-accent-dark font-bold text-xs flex items-center justify-center shrink-0">
+            U
+          </div>
+          <div class="min-w-0">
+            <div class="text-xs font-semibold text-ink truncate" id="sidebarUserLabel">user-101</div>
+            <div class="text-[10px] text-ink-light leading-none">Active Identity</div>
+          </div>
+        </div>
+        <button onclick="openUserModal()" class="text-[11px] text-accent hover:text-accent-dark font-semibold px-1.5 py-0.5 rounded hover:bg-accent-light transition" title="Switch User">
+          Switch
+        </button>
+      </div>
     </div>
   </aside>
 
-  <main class="flex-1 min-w-0">
-    <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 lg:px-8 sticky top-0 z-20">
-      <div><div id="pageEyebrow" class="text-[10px] uppercase tracking-[.18em] text-gray-400 font-bold">Workspace</div><h1 id="pageTitle" class="text-lg font-bold tracking-tight">Portfolio overview</h1></div>
+  <!-- ================= MAIN CONTENT WRAPPER ================= -->
+  <div class="flex-1 flex flex-col min-w-0 overflow-y-auto">
+    <!-- Topbar -->
+    <header class="h-16 bg-surface border-b border-line px-8 flex items-center justify-between sticky top-0 z-20">
       <div class="flex items-center gap-3">
-        <a href="/docs" target="_blank" class="btn btn-secondary px-3 py-2 text-xs">API Docs ↗</a>
-        <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">SR</div>
+        <div class="text-xs font-semibold text-ink-light" id="topBreadcrumb">Invest / Overview</div>
+      </div>
+      <div class="flex items-center gap-4">
+        <div id="topQueueBadge" class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-ink-muted border border-line">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500" id="topQueueDot"></span>
+          <span id="topQueueText">Worker Idle</span>
+        </div>
+        <a href="/docs" target="_blank" class="text-xs font-semibold text-ink-muted hover:text-ink flex items-center gap-1 border border-line rounded-lg px-3 py-1.5 hover:bg-slate-50 transition">
+          <span>FastAPI Docs</span>
+          <svg class="w-3 h-3 text-ink-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+        </a>
       </div>
     </header>
 
-    <div class="max-w-[1400px] mx-auto p-5 lg:p-8">
-      <section id="section-overview" class="page-section space-y-6">
+    <!-- Main Container -->
+    <main class="flex-1 p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
+
+      <!-- ================= 1. OVERVIEW SCREEN ================= -->
+      <section id="view-overview" class="view-panel space-y-6 fade-in">
+        <!-- Hero Header -->
         <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div><p class="text-sm text-gray-500">Good to see you.</p><h2 class="text-2xl font-bold tracking-tight mt-1">Trading workspace</h2></div>
-          <div class="flex items-center gap-2"><span class="badge bg-emerald-50 text-emerald-700">● Operational</span><span id="queueBadge" class="badge bg-gray-100 text-gray-600">Queue idle</span></div>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div class="panel p-5"><div class="text-xs text-gray-500">Available folios</div><div id="metricFolios" class="metric-value text-3xl font-bold mt-2">—</div><div class="text-xs text-gray-400 mt-2">Curated baskets</div></div>
-          <div class="panel p-5"><div class="text-xs text-gray-500">Active subscriptions</div><div id="metricSubs" class="metric-value text-3xl font-bold mt-2">—</div><div class="text-xs text-gray-400 mt-2">Across the platform</div></div>
-          <div class="panel p-5"><div class="text-xs text-gray-500">Executed orders</div><div id="metricOrders" class="metric-value text-3xl font-bold mt-2">—</div><div class="text-xs text-gray-400 mt-2">Synthetic broker receipts</div></div>
-          <div class="panel p-5"><div class="text-xs text-gray-500">Worker pending</div><div id="metricPending" class="metric-value text-3xl font-bold mt-2">—</div><div class="text-xs text-gray-400 mt-2">Durable rebalance tasks</div></div>
-        </div>
-        <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
-          <div class="panel xl:col-span-2 p-6"><div class="flex items-center justify-between mb-5"><div><h3 class="font-bold">Your workspace</h3><p class="text-xs text-gray-500 mt-1">Use a demo identity to explore the full workflow.</p></div><button class="btn btn-primary px-4 py-2 text-xs" onclick="showSection('subscriptions')">Manage subscriptions</button></div>
-            <div class="grid md:grid-cols-2 gap-5"><div class="rounded-xl bg-gray-50 border border-gray-100 p-5"><div class="text-xs text-gray-500 mb-2">Demo user</div><input id="overviewUser" class="field" value="user-101"><p class="text-[11px] text-gray-400 mt-2">This is a prototype identity field.</p></div><div class="rounded-xl bg-gray-50 border border-gray-100 p-5"><div class="text-xs text-gray-500 mb-2">Execution model</div><div class="font-semibold text-sm">Durable background processing</div><p class="text-[11px] text-gray-400 mt-2">Rebalance work is persisted before execution.</p></div></div>
+          <div>
+            <h1 class="text-2xl font-bold text-ink tracking-tight">Good day, <span id="heroUserName">user-101</span></h1>
+            <p class="text-sm text-ink-muted mt-0.5">Here is your curated basket portfolio and performance snapshot.</p>
           </div>
-          <div class="panel p-6"><h3 class="font-bold">Design principles</h3><div class="space-y-4 mt-5"><div><div class="text-sm font-semibold">Clear state</div><div class="text-xs text-gray-500 mt-1">Every action exposes what happened and what is next.</div></div><div><div class="text-sm font-semibold">Safe actions</div><div class="text-xs text-gray-500 mt-1">Destructive portfolio actions use deliberate confirmation.</div></div><div><div class="text-sm font-semibold">Human-first layout</div><div class="text-xs text-gray-500 mt-1">Quiet hierarchy, generous spacing, no dashboard clutter.</div></div></div></div>
+          <div class="flex items-center gap-2">
+            <button onclick="navigate('folios')" class="bg-ink hover:bg-ink-hover text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5">
+              <span>+ Explore New Folios</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-surface border border-line rounded-xl p-5 shadow-sm">
+            <div class="text-xs font-medium text-ink-light">Total Estimated Value</div>
+            <div class="text-2xl font-bold text-ink tracking-tight mt-1.5" id="kpiTotalValue">₹0</div>
+            <div class="text-xs text-success flex items-center gap-1 mt-1 font-semibold">
+              <span>↑ Active Positions</span>
+            </div>
+          </div>
+          <div class="bg-surface border border-line rounded-xl p-5 shadow-sm">
+            <div class="text-xs font-medium text-ink-light">Active Folios Subscribed</div>
+            <div class="text-2xl font-bold text-ink tracking-tight mt-1.5" id="kpiActiveSubs">0</div>
+            <div class="text-xs text-ink-light mt-1">Multiplied basket bundles</div>
+          </div>
+          <div class="bg-surface border border-line rounded-xl p-5 shadow-sm">
+            <div class="text-xs font-medium text-ink-light">Total Stock Positions</div>
+            <div class="text-2xl font-bold text-ink tracking-tight mt-1.5" id="kpiTotalPositions">0</div>
+            <div class="text-xs text-ink-light mt-1">12 stocks per folio</div>
+          </div>
+          <div class="bg-surface border border-line rounded-xl p-5 shadow-sm">
+            <div class="text-xs font-medium text-ink-light">Broker Execution Receipts</div>
+            <div class="text-2xl font-bold text-ink tracking-tight mt-1.5" id="kpiOrderCount">0</div>
+            <div class="text-xs text-ink-light mt-1">Idempotent simulated fills</div>
+          </div>
+        </div>
+
+        <!-- Subscribed Folios & Quick View -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 bg-surface border border-line rounded-xl p-6 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-sm font-bold text-ink">My Active Folio Subscriptions</h3>
+                <p class="text-xs text-ink-light">Curated bundles currently held by your account.</p>
+              </div>
+              <button onclick="navigate('subscriptions')" class="text-xs font-semibold text-accent hover:underline">View All →</button>
+            </div>
+            <div id="overviewSubsList" class="space-y-3">
+              <!-- Dynamically rendered -->
+            </div>
+          </div>
+
+          <!-- Quick System Telemetry Card -->
+          <div class="bg-surface border border-line rounded-xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <h3 class="text-sm font-bold text-ink">Rebalance & Worker Status</h3>
+              <p class="text-xs text-ink-light mt-0.5">Asynchronous cascade processing engine.</p>
+              <div class="mt-4 space-y-3">
+                <div class="flex items-center justify-between text-xs py-1.5 border-b border-line">
+                  <span class="text-ink-muted">Worker Engine</span>
+                  <span class="font-semibold text-success flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-success"></span> Online (Durable)
+                  </span>
+                </div>
+                <div class="flex items-center justify-between text-xs py-1.5 border-b border-line">
+                  <span class="text-ink-muted">Durable Pending Tasks</span>
+                  <span class="font-mono font-bold text-ink" id="overviewPendingTasks">0</span>
+                </div>
+                <div class="flex items-center justify-between text-xs py-1.5 border-b border-line">
+                  <span class="text-ink-muted">Completed Tasks</span>
+                  <span class="font-mono font-bold text-ink" id="overviewCompletedTasks">0</span>
+                </div>
+                <div class="flex items-center justify-between text-xs py-1.5">
+                  <span class="text-ink-muted">Execution Model</span>
+                  <span class="font-semibold text-ink-muted">At-Least-Once + Idempotency</span>
+                </div>
+              </div>
+            </div>
+            <button onclick="navigate('rebalance')" class="mt-6 w-full border border-line hover:bg-slate-50 text-ink text-xs font-semibold py-2 rounded-lg transition">
+              Open Admin Rebalance Console →
+            </button>
+          </div>
         </div>
       </section>
 
-      <section id="section-folios" class="page-section hidden space-y-6"><div><h2 class="text-2xl font-bold tracking-tight">Folios</h2><p class="text-sm text-gray-500 mt-1">Curated 12-stock baskets available for subscription.</p></div><div id="folioGrid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-5"></div></section>
+      <!-- ================= 2. EXPLORE FOLIOS SCREEN ================= -->
+      <section id="view-folios" class="view-panel hidden space-y-6 fade-in">
+        <div>
+          <h1 class="text-2xl font-bold text-ink tracking-tight">Explore Curated Folios</h1>
+          <p class="text-sm text-ink-muted mt-0.5">Invest in professionally curated 12-stock baskets with custom quantity multipliers.</p>
+        </div>
 
-      <section id="section-subscriptions" class="page-section hidden space-y-6">
-        <div><h2 class="text-2xl font-bold tracking-tight">Subscriptions</h2><p class="text-sm text-gray-500 mt-1">Choose a basket and position multiplier.</p></div>
-        <div class="grid xl:grid-cols-3 gap-5">
-          <div class="panel p-6 xl:col-span-1"><h3 class="font-bold">New subscription</h3><p class="text-xs text-gray-500 mt-1">A subscription creates the initial basket BUY orders.</p><div class="space-y-4 mt-6"><div><label class="text-xs font-semibold text-gray-600">User ID</label><input id="subUser" class="field mt-1" value="user-101"></div><div><label class="text-xs font-semibold text-gray-600">Folio</label><select id="subFolio" class="field mt-1"></select></div><div><label class="text-xs font-semibold text-gray-600">Multiplier</label><select id="subMultiplier" class="field mt-1"><option value="1">1×</option><option value="2">2×</option><option value="3" selected>3×</option><option value="5">5×</option><option value="10">10×</option></select></div><button id="subscribeBtn" class="btn btn-primary w-full py-2.5 text-sm">Subscribe to folio</button></div></div>
-          <div class="panel p-6 xl:col-span-2"><div class="flex items-center justify-between"><div><h3 class="font-bold">Active subscriptions</h3><p class="text-xs text-gray-500 mt-1">Manage current positions for the selected user.</p></div><button id="refreshSubs" class="btn btn-secondary px-3 py-2 text-xs">Refresh</button></div><div id="subsTable" class="mt-5"></div></div>
+        <div id="foliosGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- Dynamically populated folio cards -->
         </div>
       </section>
 
-      <section id="section-orders" class="page-section hidden space-y-6"><div class="flex flex-col md:flex-row md:items-end justify-between gap-3"><div><h2 class="text-2xl font-bold tracking-tight">Orders</h2><p class="text-sm text-gray-500 mt-1">Execution receipts from the synthetic broker.</p></div><div class="flex gap-2"><input id="orderUserFilter" class="field w-44" placeholder="Filter user ID"><button id="refreshOrders" class="btn btn-secondary px-3 py-2 text-xs">Refresh</button></div></div><div class="panel overflow-hidden"><div id="ordersTable"></div></div></section>
-
-      <section id="section-admin" class="page-section hidden space-y-6"><div><h2 class="text-2xl font-bold tracking-tight">Admin control</h2><p class="text-sm text-gray-500 mt-1">Change a Folio composition and queue the subscriber cascade.</p></div>
-        <div class="grid xl:grid-cols-3 gap-5"><div class="panel p-6 xl:col-span-1"><div class="flex items-center gap-2"><span class="w-8 h-8 rounded-lg bg-gray-900 text-white flex items-center justify-center">↔</span><div><h3 class="font-bold">Rebalance Folio</h3><p class="text-xs text-gray-500">Replace one stock with another.</p></div></div><div class="space-y-4 mt-6"><div><label class="text-xs font-semibold text-gray-600">Target Folio</label><select id="adminFolio" class="field mt-1"></select></div><div><label class="text-xs font-semibold text-gray-600">Outgoing stock</label><select id="adminOutgoing" class="field mt-1"></select></div><div><label class="text-xs font-semibold text-gray-600">Incoming ticker</label><input id="adminIncoming" class="field mt-1 uppercase" value="IDEA" maxlength="20"></div><div><label class="text-xs font-semibold text-gray-600">New base quantity <span class="font-normal text-gray-400">(optional)</span></label><input id="adminQty" type="number" min="0.1" step="0.1" class="field mt-1" value="2"></div><button id="rebalanceBtn" class="btn btn-primary w-full py-2.5 text-sm">Queue rebalance</button></div></div>
-          <div class="panel p-6 xl:col-span-2"><div class="flex items-center justify-between"><div><h3 class="font-bold">Worker queue</h3><p class="text-xs text-gray-500 mt-1">Durable tasks are processed independently of the request.</p></div><button id="refreshQueue" class="btn btn-secondary px-3 py-2 text-xs">Refresh</button></div><div id="queueTable" class="mt-5"></div></div>
+      <!-- ================= 3. FOLIO DETAILS SCREEN ================= -->
+      <section id="view-folio-detail" class="view-panel hidden space-y-6 fade-in">
+        <div class="flex items-center gap-2">
+          <button onclick="navigate('folios')" class="text-xs font-semibold text-ink-muted hover:text-ink flex items-center gap-1">
+            ← Back to All Folios
+          </button>
         </div>
-        <div class="panel p-6"><div class="flex items-center justify-between mb-4"><div><h3 class="font-bold">Current composition</h3><p class="text-xs text-gray-500 mt-1">Selected Folio and its 12 positions.</p></div><span id="folioVersion" class="badge bg-gray-100 text-gray-600">Version —</span></div><div id="composition" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2"></div></div>
+
+        <div class="bg-surface border border-line rounded-xl p-6 shadow-sm">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-line pb-6">
+            <div>
+              <div class="flex items-center gap-2.5">
+                <h1 class="text-2xl font-bold text-ink tracking-tight" id="detailFolioName">Alpha Growth</h1>
+                <span class="bg-slate-100 text-ink-muted text-xs font-semibold px-2.5 py-0.5 rounded-full border border-line" id="detailFolioVersion">Version 1</span>
+              </div>
+              <p class="text-xs text-ink-light mt-1">12-stock diversified equity basket managed as a single disciplined strategy.</p>
+            </div>
+
+            <!-- Multiplier & Subscribe Action -->
+            <div class="bg-canvas border border-line rounded-xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+              <div>
+                <label class="block text-[11px] font-bold text-ink-light uppercase tracking-wider mb-1">Select Multiplier</label>
+                <div class="flex items-center gap-1.5" id="multiplierButtonGroup">
+                  <button type="button" onclick="selectMultiplier(1)" class="mult-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-line bg-surface hover:bg-slate-50 transition" data-val="1">1×</button>
+                  <button type="button" onclick="selectMultiplier(2)" class="mult-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-line bg-surface hover:bg-slate-50 transition" data-val="2">2×</button>
+                  <button type="button" onclick="selectMultiplier(3)" class="mult-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-ink bg-ink text-white transition" data-val="3">3×</button>
+                  <button type="button" onclick="selectMultiplier(5)" class="mult-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-line bg-surface hover:bg-slate-50 transition" data-val="5">5×</button>
+                  <button type="button" onclick="selectMultiplier(10)" class="mult-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-line bg-surface hover:bg-slate-50 transition" data-val="10">10×</button>
+                </div>
+              </div>
+              <button onclick="promptSubscribeConfirm()" class="bg-ink hover:bg-ink-hover text-white text-xs font-bold px-6 py-3 rounded-lg shadow transition flex items-center justify-center gap-1.5">
+                <span>Subscribe to Basket</span>
+                <span>→</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 12-Stock Composition Table -->
+          <div class="mt-6">
+            <h3 class="text-sm font-bold text-ink mb-3">12-Stock Basket Allocation</h3>
+            <div class="overflow-x-auto border border-line rounded-lg">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-canvas border-b border-line text-ink-light font-semibold uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th class="py-3 px-4">#</th>
+                    <th class="py-3 px-4">Ticker</th>
+                    <th class="py-3 px-4">Base Quantity</th>
+                    <th class="py-3 px-4">Multiplied Qty (<span id="tableMultIndicator">3×</span>)</th>
+                    <th class="py-3 px-4">Strategy Weight</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-line font-medium" id="detailStocksTable">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </section>
+
+      <!-- ================= 4. MY PORTFOLIO SCREEN ================= -->
+      <section id="view-portfolio" class="view-panel hidden space-y-6 fade-in">
+        <div>
+          <h1 class="text-2xl font-bold text-ink tracking-tight">Portfolio & Aggregated Positions</h1>
+          <p class="text-sm text-ink-muted mt-0.5">Real-time breakdown of all underlying stock positions across your active Folios.</p>
+        </div>
+
+        <div class="bg-surface border border-line rounded-xl overflow-hidden shadow-sm">
+          <div class="p-5 border-b border-line flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-canvas">
+            <div class="text-xs font-bold text-ink uppercase tracking-wider">Active Holdings Breakdown</div>
+            <div class="text-xs text-ink-light">Prices are mock estimates for portfolio visualization</div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-surface border-b border-line text-ink-light font-semibold uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th class="py-3.5 px-5">Stock Symbol</th>
+                  <th class="py-3.5 px-5">Total Quantity</th>
+                  <th class="py-3.5 px-5">Est. Unit Price</th>
+                  <th class="py-3.5 px-5">Holding Value</th>
+                  <th class="py-3.5 px-5">Origin Folio</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-line" id="portfolioHoldingsTable">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 5. SUBSCRIPTIONS SCREEN ================= -->
+      <section id="view-subscriptions" class="view-panel hidden space-y-6 fade-in">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-ink tracking-tight">Subscriptions Management</h1>
+            <p class="text-sm text-ink-muted mt-0.5">Manage and exit your active Folio investments.</p>
+          </div>
+          <button onclick="navigate('folios')" class="bg-ink hover:bg-ink-hover text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition">
+            + New Subscription
+          </button>
+        </div>
+
+        <div class="bg-surface border border-line rounded-xl overflow-hidden shadow-sm">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-canvas border-b border-line text-ink-light font-semibold uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th class="py-3.5 px-5">Sub ID</th>
+                  <th class="py-3.5 px-5">Folio Name</th>
+                  <th class="py-3.5 px-5">User Multiplier</th>
+                  <th class="py-3.5 px-5">Status</th>
+                  <th class="py-3.5 px-5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-line" id="subscriptionsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 6. ORDER RECEIPTS SCREEN ================= -->
+      <section id="view-orders" class="view-panel hidden space-y-6 fade-in">
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-bold text-ink tracking-tight">Order Execution Receipts</h1>
+            <p class="text-sm text-ink-muted mt-0.5">Immutable audit trail of all synthetic BUY/SELL broker fills.</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <input type="text" id="orderSearchInput" placeholder="Filter User ID (e.g. 101)..." class="bg-surface border border-line rounded-lg px-3 py-1.5 text-xs text-ink focus:outline-none focus:border-ink w-48 shadow-sm transition">
+            <button onclick="fetchOrders()" class="border border-line hover:bg-slate-50 text-xs font-semibold px-3 py-1.5 rounded-lg transition">
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-surface border border-line rounded-xl overflow-hidden shadow-sm">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-canvas border-b border-line text-ink-light font-semibold uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th class="py-3.5 px-5">Timestamp (UTC)</th>
+                  <th class="py-3.5 px-5">Order ID</th>
+                  <th class="py-3.5 px-5">User</th>
+                  <th class="py-3.5 px-5">Side</th>
+                  <th class="py-3.5 px-5">Ticker</th>
+                  <th class="py-3.5 px-5">Quantity</th>
+                  <th class="py-3.5 px-5">Broker Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-line font-medium" id="ordersTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 7. REBALANCE CONSOLE (ADMIN) ================= -->
+      <section id="view-rebalance" class="view-panel hidden space-y-6 fade-in">
+        <div>
+          <h1 class="text-2xl font-bold text-ink tracking-tight">Admin Rebalancing Console</h1>
+          <p class="text-sm text-ink-muted mt-0.5">Swap stocks inside any Folio with asynchronous fan-out cascade to active subscribers.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Stock Swap Form -->
+          <div class="bg-surface border border-line rounded-xl p-6 shadow-sm space-y-4">
+            <h3 class="text-sm font-bold text-ink border-b border-line pb-3">Configure Stock Replacement</h3>
+            
+            <div>
+              <label class="block text-xs font-semibold text-ink-muted mb-1">Target Folio</label>
+              <select id="rebalFolioSelect" class="w-full bg-surface border border-line rounded-lg p-2 text-xs text-ink focus:outline-none focus:border-ink">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-ink-muted mb-1">Existing Stock to Remove (SELL)</label>
+              <select id="rebalOutgoingSelect" class="w-full bg-surface border border-line rounded-lg p-2 text-xs text-ink focus:outline-none focus:border-ink">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-ink-muted mb-1">New Stock Symbol (BUY)</label>
+              <input type="text" id="rebalIncomingTicker" placeholder="e.g. WIPRO, TATAMOTORS" maxlength="20" class="w-full bg-surface border border-line rounded-lg p-2 text-xs text-ink uppercase focus:outline-none focus:border-ink">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-ink-muted mb-1">New Base Quantity <span class="text-ink-light font-normal">(optional)</span></label>
+              <input type="number" id="rebalNewQty" min="0.1" step="0.1" placeholder="Defaults to old base qty" class="w-full bg-surface border border-line rounded-lg p-2 text-xs text-ink focus:outline-none focus:border-ink">
+            </div>
+
+            <button onclick="promptRebalanceConfirm()" class="w-full bg-ink hover:bg-ink-hover text-white text-xs font-bold py-2.5 rounded-lg shadow transition mt-2">
+              Queue Cascade Rebalance →
+            </button>
+          </div>
+
+          <!-- Impact & Current Composition Preview -->
+          <div class="lg:col-span-2 bg-surface border border-line rounded-xl p-6 shadow-sm space-y-4">
+            <div class="flex items-center justify-between border-b border-line pb-3">
+              <h3 class="text-sm font-bold text-ink">Selected Folio Composition</h3>
+              <span class="text-xs font-semibold text-ink-light" id="rebalFolioVersionLabel">Version 1</span>
+            </div>
+            
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5" id="rebalCompositionGrid">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 8. WORKER TELEMETRY SCREEN ================= -->
+      <section id="view-queue" class="view-panel hidden space-y-6 fade-in">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-ink tracking-tight">Worker Telemetry & Queue Diagnostics</h1>
+            <p class="text-sm text-ink-muted mt-0.5">Real-time status of durable background rebalance tasks.</p>
+          </div>
+          <button onclick="fetchQueueStatus()" class="border border-line hover:bg-slate-50 text-xs font-semibold px-3 py-1.5 rounded-lg transition">
+            Refresh Metrics
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-surface border border-line rounded-xl p-5 shadow-sm">
+            <div class="text-xs font-medium text-ink-light">Pending / Queued Tasks</div>
+            <div class="text-2xl font-bold text-warning mt-1.5 font-mono" id="telemetryPending">0</div>
+          </div>
+          <div class="bg-surface border border-line rounded-xl p-5 shadow-sm">
+            <div class="text-xs font-medium text-ink-light">In-Progress (Processing)</div>
+            <div class="text-2xl font-bold text-accent mt-1.5 font-mono" id="telemetryProcessing">0</div>
+          </div>
+          <div class="bg-surface border border-line rounded-xl p-5 shadow-sm">
+            <div class="text-xs font-medium text-ink-light">Completed Fills</div>
+            <div class="text-2xl font-bold text-success mt-1.5 font-mono" id="telemetryCompleted">0</div>
+          </div>
+          <div class="bg-surface border border-line rounded-xl p-5 shadow-sm">
+            <div class="text-xs font-medium text-ink-light">Failed (Exhausted Retries)</div>
+            <div class="text-2xl font-bold text-danger mt-1.5 font-mono" id="telemetryFailed">0</div>
+          </div>
+        </div>
+
+        <!-- Diagnostics Card -->
+        <div class="bg-surface border border-line rounded-xl p-6 shadow-sm space-y-3">
+          <h3 class="text-sm font-bold text-ink">System Architecture Health</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs pt-2">
+            <div class="p-3 bg-canvas border border-line rounded-lg">
+              <div class="text-ink-light">FastAPI REST APIs</div>
+              <div class="font-bold text-success mt-1">● Healthy / Responsive</div>
+            </div>
+            <div class="p-3 bg-canvas border border-line rounded-lg">
+              <div class="text-ink-light">Persistence Layer</div>
+              <div class="font-bold text-success mt-1">● SQLite / Auto-Migrated</div>
+            </div>
+            <div class="p-3 bg-canvas border border-line rounded-lg">
+              <div class="text-ink-light">Mock Broker Ledger</div>
+              <div class="font-bold text-success mt-1">● Idempotency Enforced</div>
+            </div>
+            <div class="p-3 bg-canvas border border-line rounded-lg">
+              <div class="text-ink-light">Concurrency Guard</div>
+              <div class="font-bold text-success mt-1">● Active Folio Locks</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ================= MODALS & OVERLAYS ================= -->
+
+  <!-- User Switcher Modal -->
+  <div id="modalUser" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-surface border border-line rounded-xl max-w-sm w-full p-6 shadow-xl space-y-4 fade-in">
+      <div>
+        <h3 class="text-base font-bold text-ink">Switch Active Identity</h3>
+        <p class="text-xs text-ink-light mt-1">Choose a demo User ID to simulate multiple accounts.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-ink-muted mb-1">User Identifier</label>
+        <input type="text" id="modalUserInput" value="user-101" class="w-full bg-surface border border-line rounded-lg p-2.5 text-sm text-ink focus:outline-none focus:border-ink font-mono">
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeModal('modalUser')" class="px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-slate-100 rounded-lg">Cancel</button>
+        <button onclick="saveActiveUser()" class="bg-ink hover:bg-ink-hover text-white text-xs font-bold px-4 py-1.5 rounded-lg shadow">Confirm</button>
+      </div>
     </div>
-  </main>
-</div>
-<div id="toast" class="fixed right-5 bottom-5 hidden toast"><div id="toastInner" class="panel px-4 py-3 text-sm max-w-sm"></div></div>
+  </div>
 
-<script>
-const state = { folios: [], user: 'user-101', selectedFolio: null };
-const $ = id => document.getElementById(id);
-const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function toast(message, good=true){ $('toastInner').innerHTML = `<div class="font-semibold">${good?'Done':'Action needed'}</div><div class="text-xs text-gray-500 mt-1">${esc(message)}</div>`; $('toast').classList.remove('hidden'); clearTimeout(window.__toast); window.__toast=setTimeout(()=> $('toast').classList.add('hidden'),3200); }
-async function api(url, opts={}){ const r=await fetch(url, opts); let data={}; try{data=await r.json()}catch{} if(!r.ok) throw new Error(data.detail || data.message || `Request failed (${r.status})`); return data; }
-function showSection(name){ document.querySelectorAll('.page-section').forEach(x=>x.classList.add('hidden')); $('section-'+name).classList.remove('hidden'); document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active', x.dataset.section===name)); const titles={overview:'Portfolio overview',folios:'Folios',subscriptions:'Subscriptions',orders:'Orders',admin:'Admin control'}; $('pageTitle').textContent=titles[name]; $('pageEyebrow').textContent=name==='admin'?'Operations':'Workspace'; if(name==='folios') renderFolios(); if(name==='subscriptions') loadSubs(); if(name==='orders') loadOrders(); if(name==='admin'){renderAdminFolios();loadQueue();renderComposition();} }
-document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>showSection(b.dataset.section)));
-async function loadFolios(){ try{state.folios=await api('/api/folios'); $('metricFolios').textContent=state.folios.length; fillFolioSelects(); renderFolios(); renderAdminFolios();}catch(e){toast(e.message,false)} }
-function fillFolioSelects(){ const opts=state.folios.map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join(''); $('subFolio').innerHTML=opts; $('adminFolio').innerHTML=opts; if(state.selectedFolio==null && state.folios[0]) state.selectedFolio=state.folios[0].id; if(state.selectedFolio) {$('adminFolio').value=state.selectedFolio; updateOutgoing();} }
-function renderFolios(){ $('folioGrid').innerHTML=state.folios.map(f=>`<div class="panel p-5 hover:shadow-soft transition"><div class="flex justify-between items-start"><div><div class="text-xs text-gray-400">Folio ${f.id}</div><h3 class="font-bold mt-1">${esc(f.name)}</h3></div><span class="badge bg-gray-100 text-gray-600">${f.stocks?.length||0} stocks</span></div><div class="grid grid-cols-2 gap-2 mt-5">${(f.stocks||[]).slice(0,6).map(s=>`<div class="rounded-lg bg-gray-50 px-3 py-2"><div class="text-xs font-semibold">${esc(s.ticker)}</div><div class="text-[10px] text-gray-400 mt-1">Base ${s.base_quantity}</div></div>`).join('')}</div><button class="btn btn-secondary w-full py-2 mt-4 text-xs" onclick="openFolio(${f.id})">View composition</button></div>`).join('') || `<div class="panel p-8 text-sm text-gray-500">No folios available.</div>`; }
-function openFolio(id){ state.selectedFolio=id; $('adminFolio').value=id; updateOutgoing(); showSection('admin'); }
-function renderAdminFolios(){ if(state.selectedFolio) $('adminFolio').value=state.selectedFolio; updateOutgoing(); renderComposition(); }
-function updateOutgoing(){ const f=state.folios.find(x=>x.id==$('adminFolio').value); if(!f)return; state.selectedFolio=f.id; $('adminOutgoing').innerHTML=(f.stocks||[]).map(s=>`<option value="${esc(s.ticker)}">${esc(s.ticker)} · base ${s.base_quantity}</option>`).join(''); renderComposition(); }
-$('adminFolio').addEventListener('change',()=>{state.selectedFolio=Number($('adminFolio').value);updateOutgoing()});
-function renderComposition(){const f=state.folios.find(x=>x.id==state.selectedFolio); if(!f)return; $('folioVersion').textContent='Version '+(f.version_id??'—'); $('composition').innerHTML=(f.stocks||[]).map(s=>`<div class="border border-gray-200 rounded-lg p-3"><div class="text-xs font-bold">${esc(s.ticker)}</div><div class="text-[10px] text-gray-400 mt-1">${s.base_quantity} units</div></div>`).join('');}
-async function loadSubs(){ const u=$('subUser').value.trim()||state.user; state.user=u; $('overviewUser').value=u; try{const data=await api('/api/users/'+encodeURIComponent(u)+'/subscriptions'); $('metricSubs').textContent=data.filter(x=>x.active).length; $('subsTable').innerHTML=data.length?`<div class="divide-y divide-gray-100">${data.map(s=>`<div class="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div class="font-semibold text-sm">${esc(s.folio_name||('Folio '+s.folio_id))}</div><div class="text-xs text-gray-500 mt-1">Multiplier ${s.multiplier}× · Subscription #${s.id}</div></div><div class="flex items-center gap-3"><span class="badge ${s.active?'bg-emerald-50 text-emerald-700':'bg-gray-100 text-gray-500'}">${s.active?'Active':'Exited'}</span>${s.active?`<button class="btn btn-secondary px-3 py-1.5 text-xs" onclick="exitSub(${s.id})">Exit</button>`:''}</div></div>`).join('')}</div>`:`<div class="rounded-xl bg-gray-50 p-8 text-center text-sm text-gray-500">No subscriptions for this user.</div>`;}catch(e){$('subsTable').innerHTML=`<div class="p-6 text-sm text-red-600">${esc(e.message)}</div>`}}
-async function exitSub(id){if(!confirm('Exit this subscription? This will generate SELL orders for the current position.'))return;try{await api('/api/subscriptions/'+id+'/exit',{method:'POST'});toast('Subscription exited.');loadSubs();loadOrders();}catch(e){toast(e.message,false)}}
-$('subUser').addEventListener('change',loadSubs); $('overviewUser').addEventListener('change',()=>{$('subUser').value=$('overviewUser').value;loadSubs()}); $('refreshSubs').addEventListener('click',loadSubs);
-$('subscribeBtn').addEventListener('click',async()=>{try{const payload={user_id:$('subUser').value.trim(),folio_id:Number($('subFolio').value),multiplier:Number($('subMultiplier').value)};await api('/api/subscriptions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});toast('Subscription created and BUY orders submitted.');loadSubs();loadOrders();}catch(e){toast(e.message,false)}});
-async function loadOrders(){try{const u=$('orderUserFilter').value.trim();const url='/api/orders?limit=100'+(u?'&user_id='+encodeURIComponent(u):'');const data=await api(url);$('metricOrders').textContent=data.length; $('ordersTable').innerHTML=data.length?`<div class="overflow-x-auto"><table class="w-full text-left"><thead class="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-400"><tr><th class="px-5 py-3">Time</th><th class="px-5 py-3">Order</th><th class="px-5 py-3">User</th><th class="px-5 py-3">Action</th><th class="px-5 py-3">Ticker</th><th class="px-5 py-3">Qty</th><th class="px-5 py-3">Status</th></tr></thead><tbody class="divide-y divide-gray-100">${data.map(o=>`<tr class="table-row"><td class="px-5 py-3 text-xs text-gray-500">${esc(o.timestamp||'—')}</td><td class="px-5 py-3 text-xs font-mono">${esc(o.order_id)}</td><td class="px-5 py-3 text-xs">${esc(o.user_id)}</td><td class="px-5 py-3"><span class="badge ${o.action==='BUY'?'bg-blue-50 text-blue-700':'bg-orange-50 text-orange-700'}">${esc(o.action)}</span></td><td class="px-5 py-3 text-xs font-semibold">${esc(o.ticker)}</td><td class="px-5 py-3 text-xs">${o.quantity}</td><td class="px-5 py-3"><span class="badge bg-emerald-50 text-emerald-700">${esc(o.status)}</span></td></tr>`).join('')}</tbody></table></div>`:`<div class="p-10 text-center text-sm text-gray-500">No execution receipts yet.</div>`;}catch(e){$('ordersTable').innerHTML=`<div class="p-6 text-sm text-red-600">${esc(e.message)}</div>`}}
-$('orderUserFilter').addEventListener('input',loadOrders);
-$('orderUserFilter').addEventListener('change',loadOrders);
-$('refreshOrders').addEventListener('click',loadOrders);
-async function loadQueue(){try{const q=await api('/api/admin/queue');$('metricPending').textContent=q.pending_count??0;$('queueBadge').textContent=(q.pending_count??0)>0?'Queue processing':'Queue idle';$('queueTable').innerHTML=`<div class="grid sm:grid-cols-4 gap-3">${[['Pending',q.pending_count??0,'bg-amber-50'],['Processing',q.processing_count??0,'bg-blue-50'],['Completed',q.completed_count??0,'bg-emerald-50'],['Failed',q.failed_count??0,'bg-red-50']].map(x=>`<div class="${x[2]} rounded-xl p-4"><div class="text-xs text-gray-500">${x[0]}</div><div class="text-2xl font-bold mt-1">${x[1]}</div></div>`).join('')}</div>`;}catch(e){$('queueTable').innerHTML=`<div class="text-sm text-red-600">${esc(e.message)}</div>`}}
-$('refreshQueue').addEventListener('click',loadQueue);
-$('rebalanceBtn').addEventListener('click',async()=>{if(!confirm('Queue this Folio rebalance? Active subscribers will receive SELL/BUY tasks.'))return;try{const body={folio_id:Number($('adminFolio').value),outgoing_ticker:$('adminOutgoing').value,incoming_ticker:$('adminIncoming').value.trim().toUpperCase()};if($('adminQty').value)body.new_base_quantity=Number($('adminQty').value);const r=await api('/api/admin/rebalance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});toast(`${r.active_subscribers_queued} active subscriber(s) queued.`);await loadFolios();await loadQueue();}catch(e){toast(e.message,false)}});
-async function init(){await loadFolios();await loadSubs();await loadOrders();await loadQueue();setInterval(()=>{loadQueue();},3000);setInterval(()=>{if(!document.getElementById('section-orders').classList.contains('hidden'))loadOrders();},5000)}
-init();
-</script>
+  <!-- Subscription Confirmation Modal -->
+  <div id="modalSubscribeConfirm" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-surface border border-line rounded-xl max-w-md w-full p-6 shadow-xl space-y-4 fade-in">
+      <div>
+        <h3 class="text-base font-bold text-ink">Review & Confirm Subscription</h3>
+        <p class="text-xs text-ink-light mt-1">You are subscribing to a curated 12-stock basket.</p>
+      </div>
+      <div class="bg-canvas border border-line rounded-lg p-4 space-y-2 text-xs">
+        <div class="flex justify-between"><span class="text-ink-light">Folio:</span><span class="font-bold text-ink" id="confirmFolioName">—</span></div>
+        <div class="flex justify-between"><span class="text-ink-light">Multiplier:</span><span class="font-bold text-ink" id="confirmMultiplier">—</span></div>
+        <div class="flex justify-between"><span class="text-ink-light">Generated Orders:</span><span class="font-bold text-ink">12 Synthetic BUY Orders</span></div>
+        <div class="flex justify-between"><span class="text-ink-light">Subscriber:</span><span class="font-mono text-ink" id="confirmUserId">—</span></div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeModal('modalSubscribeConfirm')" class="px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-slate-100 rounded-lg">Cancel</button>
+        <button onclick="executeSubscription()" id="btnConfirmSubscribe" class="bg-ink hover:bg-ink-hover text-white text-xs font-bold px-4 py-2 rounded-lg shadow">Confirm & Execute</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rebalance Confirmation Modal -->
+  <div id="modalRebalanceConfirm" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-surface border border-line rounded-xl max-w-md w-full p-6 shadow-xl space-y-4 fade-in">
+      <div>
+        <h3 class="text-base font-bold text-ink">Confirm Folio Stock Swap</h3>
+        <p class="text-xs text-ink-light mt-1">This will update the Folio composition and queue asynchronous rebalancing for all active subscribers.</p>
+      </div>
+      <div class="bg-canvas border border-line rounded-lg p-4 space-y-2 text-xs">
+        <div class="flex justify-between"><span class="text-ink-light">Folio:</span><span class="font-bold text-ink" id="rebalConfirmFolio">—</span></div>
+        <div class="flex justify-between"><span class="text-ink-light">Outgoing Stock (SELL):</span><span class="font-bold text-danger" id="rebalConfirmOutgoing">—</span></div>
+        <div class="flex justify-between"><span class="text-ink-light">Incoming Stock (BUY):</span><span class="font-bold text-success" id="rebalConfirmIncoming">—</span></div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeModal('modalRebalanceConfirm')" class="px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-slate-100 rounded-lg">Cancel</button>
+        <button onclick="executeRebalance()" id="btnConfirmRebalance" class="bg-ink hover:bg-ink-hover text-white text-xs font-bold px-4 py-2 rounded-lg shadow">Trigger Cascade</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Exit Confirmation Modal -->
+  <div id="modalExitConfirm" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-surface border border-line rounded-xl max-w-md w-full p-6 shadow-xl space-y-4 fade-in">
+      <div>
+        <h3 class="text-base font-bold text-ink">Exit Folio Subscription?</h3>
+        <p class="text-xs text-ink-light mt-1">This will liquidate your multiplied positions by executing exactly 12 synthetic SELL orders.</p>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeModal('modalExitConfirm')" class="px-3 py-1.5 text-xs font-semibold text-ink-muted hover:bg-slate-100 rounded-lg">Cancel</button>
+        <button onclick="executeExitSubscription()" id="btnConfirmExit" class="bg-danger hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow">Exit & Liquidate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 hidden bg-ink text-white text-xs font-medium py-3 px-4 rounded-xl shadow-2xl flex items-center gap-2.5 fade-in">
+    <span id="toastIcon">✓</span>
+    <span id="toastMessage">Action completed</span>
+  </div>
+
+  <!-- ================= SCRIPT CONTROLLER ================= -->
+  <script>
+    // State
+    const state = {
+      user: localStorage.getItem("stockwiz_user_id") || "user-101",
+      folios: [],
+      selectedFolioId: 1,
+      selectedMultiplier: 3,
+      userSubscriptions: [],
+      orders: [],
+      pendingExitSubId: null
+    };
+
+    // Helper functions
+    const $ = id => document.getElementById(id);
+    const esc = str => String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    function toast(msg, isSuccess = true) {
+      $('toastIcon').textContent = isSuccess ? '✓' : '✕';
+      $('toastMessage').textContent = msg;
+      $('toast').className = `fixed bottom-6 right-6 z-50 bg-ink text-white text-xs font-medium py-3 px-4 rounded-xl shadow-2xl flex items-center gap-2.5 fade-in border ${isSuccess ? 'border-emerald-600' : 'border-red-600'}`;
+      $('toast').classList.remove('hidden');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => $('toast').classList.add('hidden'), 3500);
+    }
+
+    async function api(url, options = {}) {
+      try {
+        const res = await fetch(url, options);
+        let data = {};
+        try { data = await res.json(); } catch(e) {}
+        if (!res.ok) {
+          throw new Error(data.detail || data.message || `Request failed with status ${res.status}`);
+        }
+        return data;
+      } catch (err) {
+        throw err;
+      }
+    }
+
+    // Navigation
+    function navigate(viewName) {
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.add('hidden'));
+      const target = $('view-' + viewName);
+      if (target) target.classList.remove('hidden');
+
+      document.querySelectorAll('.nav-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.view === viewName);
+      });
+
+      const breadcrumbMap = {
+        overview: 'Invest / Overview',
+        folios: 'Invest / Explore Folios',
+        'folio-detail': 'Invest / Folio Details',
+        portfolio: 'Invest / My Portfolio',
+        orders: 'Invest / Order Receipts',
+        subscriptions: 'Account / Subscriptions',
+        rebalance: 'Operations / Rebalance Console',
+        queue: 'Operations / Worker Telemetry'
+      };
+      $('topBreadcrumb').textContent = breadcrumbMap[viewName] || 'Workspace';
+
+      if (viewName === 'overview') refreshOverview();
+      if (viewName === 'folios') renderFoliosGrid();
+      if (viewName === 'portfolio') renderPortfolioHoldings();
+      if (viewName === 'subscriptions') fetchSubscriptions();
+      if (viewName === 'orders') fetchOrders();
+      if (viewName === 'rebalance') populateRebalanceView();
+      if (viewName === 'queue') fetchQueueStatus();
+    }
+
+    // Fetch Folios
+    async function fetchFolios() {
+      try {
+        state.folios = await api('/api/folios');
+        if (state.folios.length > 0 && !state.selectedFolioId) {
+          state.selectedFolioId = state.folios[0].id;
+        }
+        renderFoliosGrid();
+        populateRebalanceView();
+      } catch (err) {
+        toast('Failed to load Folios: ' + err.message, false);
+      }
+    }
+
+    // Render Folios Grid (Marketplace)
+    function renderFoliosGrid() {
+      $('foliosGrid').innerHTML = state.folios.map(f => `
+        <div class="bg-surface border border-line rounded-xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold text-ink-light uppercase tracking-wider">Folio #${f.id}</span>
+              <span class="text-[10px] font-bold bg-slate-100 text-ink px-2 py-0.5 rounded-full border border-line">12 Stocks</span>
+            </div>
+            <h3 class="text-base font-bold text-ink mt-1.5">${esc(f.name)}</h3>
+            <p class="text-xs text-ink-light mt-1">Diversified equity strategy</p>
+            
+            <div class="grid grid-cols-3 gap-1.5 mt-4">
+              ${f.stocks.slice(0, 6).map(s => `
+                <div class="bg-canvas border border-line rounded px-2 py-1 text-center">
+                  <div class="text-[10px] font-bold text-ink truncate">${esc(s.ticker)}</div>
+                  <div class="text-[9px] text-ink-light">Qty ${s.base_quantity}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <div class="pt-5 border-t border-line mt-5 flex items-center justify-between">
+            <span class="text-xs text-ink-light font-medium">Version ${f.version_id || 1}</span>
+            <button onclick="openFolioDetail(${f.id})" class="bg-ink hover:bg-ink-hover text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition">
+              View Composition →
+            </button>
+          </div>
+        </div>
+      `).join('') || '<div class="text-xs text-ink-light">No folios found.</div>';
+    }
+
+    // Open Folio Detail
+    function openFolioDetail(folioId) {
+      state.selectedFolioId = folioId;
+      const f = state.folios.find(x => x.id === folioId);
+      if (!f) return;
+
+      $('detailFolioName').textContent = f.name;
+      $('detailFolioVersion').textContent = `Version ${f.version_id || 1}`;
+      $('tableMultIndicator').textContent = `${state.selectedMultiplier}×`;
+
+      $('detailStocksTable').innerHTML = f.stocks.map((s, idx) => `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="py-3 px-4 text-ink-light">${idx + 1}</td>
+          <td class="py-3 px-4 font-bold text-ink font-mono">${esc(s.ticker)}</td>
+          <td class="py-3 px-4 text-ink">${s.base_quantity}</td>
+          <td class="py-3 px-4 font-bold text-accent">${(s.base_quantity * state.selectedMultiplier).toFixed(1)}</td>
+          <td class="py-3 px-4 text-ink-light">${(100 / 12).toFixed(1)}%</td>
+        </tr>
+      `).join('');
+
+      navigate('folio-detail');
+    }
+
+    function selectMultiplier(mult) {
+      state.selectedMultiplier = mult;
+      document.querySelectorAll('.mult-btn').forEach(b => {
+        const isSel = Number(b.dataset.val) === mult;
+        b.className = isSel 
+          ? 'mult-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-ink bg-ink text-white transition' 
+          : 'mult-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-line bg-surface hover:bg-slate-50 transition';
+      });
+      $('tableMultIndicator').textContent = `${mult}×`;
+      if (state.selectedFolioId) {
+        openFolioDetail(state.selectedFolioId);
+      }
+    }
+
+    // Prompt Subscription Confirmation Modal
+    function promptSubscribeConfirm() {
+      const f = state.folios.find(x => x.id === state.selectedFolioId);
+      if (!f) return;
+      $('confirmFolioName').textContent = f.name;
+      $('confirmMultiplier').textContent = `${state.selectedMultiplier}×`;
+      $('confirmUserId').textContent = state.user;
+      $('modalSubscribeConfirm').classList.remove('hidden');
+    }
+
+    async function executeSubscription() {
+      $('btnConfirmSubscribe').disabled = true;
+      $('btnConfirmSubscribe').textContent = 'Submitting 12 Orders...';
+      try {
+        await api('/api/subscriptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: state.user,
+            folio_id: state.selectedFolioId,
+            multiplier: state.selectedMultiplier
+          })
+        });
+        closeModal('modalSubscribeConfirm');
+        toast('Successfully subscribed! 12 BUY orders executed.');
+        await fetchSubscriptions();
+        await fetchOrders();
+        navigate('subscriptions');
+      } catch (err) {
+        toast(err.message, false);
+      } finally {
+        $('btnConfirmSubscribe').disabled = false;
+        $('btnConfirmSubscribe').textContent = 'Confirm & Execute';
+      }
+    }
+
+    // Fetch Subscriptions
+    async function fetchSubscriptions() {
+      try {
+        state.userSubscriptions = await api(`/api/users/${encodeURIComponent(state.user)}/subscriptions`);
+        renderSubscriptionsTable();
+        refreshOverview();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function renderSubscriptionsTable() {
+      const activeList = state.userSubscriptions.filter(s => s.active);
+      $('subscriptionsTableBody').innerHTML = state.userSubscriptions.map(s => `
+        <tr class="hover:bg-slate-50 transition font-medium">
+          <td class="py-3.5 px-5 font-mono text-ink-light">#${s.id}</td>
+          <td class="py-3.5 px-5 font-bold text-ink">${esc(s.folio_name || ('Folio ' + s.folio_id))}</td>
+          <td class="py-3.5 px-5 font-mono text-accent font-bold">${s.multiplier}×</td>
+          <td class="py-3.5 px-5">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${s.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
+              ${s.active ? 'Active' : 'Exited / Liquidated'}
+            </span>
+          </td>
+          <td class="py-3.5 px-5 text-right">
+            ${s.active ? `
+              <button onclick="promptExitConfirm(${s.id})" class="text-xs font-semibold text-danger hover:bg-danger-light px-2.5 py-1 rounded transition">
+                Exit Folio
+              </button>
+            ` : '<span class="text-xs text-ink-light">—</span>'}
+          </td>
+        </tr>
+      `).join('') || `<tr><td colspan="5" class="p-8 text-center text-ink-light">No active subscriptions for ${esc(state.user)}.</td></tr>`;
+    }
+
+    function promptExitConfirm(subId) {
+      state.pendingExitSubId = subId;
+      $('modalExitConfirm').classList.remove('hidden');
+    }
+
+    async function executeExitSubscription() {
+      if (!state.pendingExitSubId) return;
+      $('btnConfirmExit').disabled = true;
+      try {
+        await api(`/api/subscriptions/${state.pendingExitSubId}/exit`, { method: 'POST' });
+        closeModal('modalExitConfirm');
+        toast('Folio exited. 12 SELL orders executed.');
+        await fetchSubscriptions();
+        await fetchOrders();
+      } catch (err) {
+        toast(err.message, false);
+      } finally {
+        $('btnConfirmExit').disabled = false;
+      }
+    }
+
+    // Fetch Orders Feed
+    async function fetchOrders() {
+      try {
+        const filterVal = $('orderSearchInput').value.trim();
+        const url = filterVal ? `/api/orders?user_id=${encodeURIComponent(filterVal)}&limit=100` : '/api/orders?limit=100';
+        state.orders = await api(url);
+        renderOrdersTable();
+        $('kpiOrderCount').textContent = state.orders.length;
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function renderOrdersTable() {
+      $('ordersTableBody').innerHTML = state.orders.map(o => `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="py-3 px-5 text-ink-light text-[11px] font-mono">${esc(o.timestamp)}</td>
+          <td class="py-3 px-5 font-mono text-ink font-semibold">${esc(o.order_id)}</td>
+          <td class="py-3 px-5 text-ink font-medium">${esc(o.user_id)}</td>
+          <td class="py-3 px-5">
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${o.action === 'BUY' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}">
+              ${esc(o.action)}
+            </span>
+          </td>
+          <td class="py-3 px-5 font-bold font-mono text-ink">${esc(o.ticker)}</td>
+          <td class="py-3 px-5 font-bold text-ink">${o.quantity}</td>
+          <td class="py-3 px-5">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+              ${esc(o.status)}
+            </span>
+          </td>
+        </tr>
+      `).join('') || `<tr><td colspan="7" class="p-8 text-center text-ink-light">No execution receipts found.</td></tr>`;
+    }
+
+    // Render Portfolio Holdings Breakdown
+    function renderPortfolioHoldings() {
+      const activeSubs = state.userSubscriptions.filter(s => s.active);
+      const holdingsMap = {};
+
+      activeSubs.forEach(sub => {
+        const folio = state.folios.find(f => f.id === sub.folio_id);
+        if (folio) {
+          folio.stocks.forEach(stock => {
+            const qty = stock.base_quantity * sub.multiplier;
+            if (!holdingsMap[stock.ticker]) {
+              holdingsMap[stock.ticker] = { ticker: stock.ticker, qty: 0, folios: new Set() };
+            }
+            holdingsMap[stock.ticker].qty += qty;
+            holdingsMap[stock.ticker].folios.add(folio.name);
+          });
+        }
+      });
+
+      const entries = Object.values(holdingsMap);
+      let totalPortfolioVal = 0;
+
+      $('portfolioHoldingsTable').innerHTML = entries.map(h => {
+        // Mock price for realistic financial visualization
+        const mockPrice = 1250 + (h.ticker.charCodeAt(0) * 15);
+        const val = h.qty * mockPrice;
+        totalPortfolioVal += val;
+
+        return `
+          <tr class="hover:bg-slate-50 transition font-medium">
+            <td class="py-3.5 px-5 font-bold font-mono text-ink">${esc(h.ticker)}</td>
+            <td class="py-3.5 px-5 font-bold text-accent">${h.qty.toFixed(1)}</td>
+            <td class="py-3.5 px-5 text-ink-light">₹${mockPrice.toLocaleString()}</td>
+            <td class="py-3.5 px-5 font-bold text-ink">₹${val.toLocaleString()}</td>
+            <td class="py-3.5 px-5 text-xs text-ink-light">${Array.from(h.folios).join(', ')}</td>
+          </tr>
+        `;
+      }).join('') || `<tr><td colspan="5" class="p-8 text-center text-ink-light">No active positions. Subscribe to a Folio to build your portfolio.</td></tr>`;
+
+      $('kpiTotalValue').textContent = totalPortfolioVal > 0 ? `₹${totalPortfolioVal.toLocaleString()}` : '₹0';
+      $('kpiTotalPositions').textContent = entries.length;
+    }
+
+    // Refresh Overview
+    function refreshOverview() {
+      $('heroUserName').textContent = state.user;
+      $('sidebarUserLabel').textContent = state.user;
+      const activeSubs = state.userSubscriptions.filter(s => s.active);
+      $('kpiActiveSubs').textContent = activeSubs.length;
+
+      $('overviewSubsList').innerHTML = activeSubs.map(s => `
+        <div class="p-4 bg-canvas border border-line rounded-lg flex items-center justify-between">
+          <div>
+            <div class="font-bold text-sm text-ink">${esc(s.folio_name || ('Folio ' + s.folio_id))}</div>
+            <div class="text-xs text-ink-light mt-0.5">Multiplier: <span class="font-bold text-accent">${s.multiplier}×</span> · 12 Positions</div>
+          </div>
+          <button onclick="promptExitConfirm(${s.id})" class="text-xs font-semibold text-danger hover:underline">Exit</button>
+        </div>
+      `).join('') || '<div class="p-6 text-center text-xs text-ink-light bg-canvas border border-line rounded-lg">No active subscriptions yet. Explore Folios to get started.</div>';
+
+      renderPortfolioHoldings();
+    }
+
+    // Rebalance Console
+    function populateRebalanceView() {
+      $('rebalFolioSelect').innerHTML = state.folios.map(f => `<option value="${f.id}">${esc(f.name)} (v${f.version_id || 1})</option>`).join('');
+      if (state.folios.length > 0) {
+        updateRebalanceOutgoingOptions();
+      }
+    }
+
+    function updateRebalanceOutgoingOptions() {
+      const selectedId = Number($('rebalFolioSelect').value);
+      const f = state.folios.find(x => x.id === selectedId);
+      if (!f) return;
+
+      $('rebalFolioVersionLabel').textContent = `Version ${f.version_id || 1}`;
+      $('rebalOutgoingSelect').innerHTML = f.stocks.map(s => `<option value="${esc(s.ticker)}">${esc(s.ticker)} (Base Qty: ${s.base_quantity})</option>`).join('');
+
+      $('rebalCompositionGrid').innerHTML = f.stocks.map(s => `
+        <div class="p-3 bg-canvas border border-line rounded-lg text-center">
+          <div class="font-bold text-xs text-ink font-mono">${esc(s.ticker)}</div>
+          <div class="text-[10px] text-ink-light mt-0.5">Base: ${s.base_quantity}</div>
+        </div>
+      `).join('');
+    }
+
+    $('rebalFolioSelect').addEventListener('change', updateRebalanceOutgoingOptions);
+
+    function promptRebalanceConfirm() {
+      const f = state.folios.find(x => x.id === Number($('rebalFolioSelect').value));
+      const outgoing = $('rebalOutgoingSelect').value;
+      const incoming = $('rebalIncomingTicker').value.trim().toUpperCase();
+
+      if (!incoming) {
+        toast('Please specify an incoming ticker.', false);
+        return;
+      }
+
+      $('rebalConfirmFolio').textContent = f ? f.name : '—';
+      $('rebalConfirmOutgoing').textContent = outgoing;
+      $('rebalConfirmIncoming').textContent = incoming;
+      $('modalRebalanceConfirm').classList.remove('hidden');
+    }
+
+    async function executeRebalance() {
+      $('btnConfirmRebalance').disabled = true;
+      try {
+        const payload = {
+          folio_id: Number($('rebalFolioSelect').value),
+          outgoing_ticker: $('rebalOutgoingSelect').value,
+          incoming_ticker: $('rebalIncomingTicker').value.trim().toUpperCase()
+        };
+        const qty = $('rebalNewQty').value;
+        if (qty && Number(qty) > 0) {
+          payload.new_base_quantity = Number(qty);
+        }
+
+        const res = await api('/api/admin/rebalance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        closeModal('modalRebalanceConfirm');
+        toast(`Rebalance queued! ${res.active_subscribers_queued} subscriber(s) scheduled for background cascade.`);
+        await fetchFolios();
+        await fetchQueueStatus();
+        $('rebalIncomingTicker').value = '';
+        $('rebalNewQty').value = '';
+      } catch (err) {
+        toast(err.message, false);
+      } finally {
+        $('btnConfirmRebalance').disabled = false;
+      }
+    }
+
+    // Queue Status & Diagnostics
+    async function fetchQueueStatus() {
+      try {
+        const q = await api('/api/admin/queue');
+        $('overviewPendingTasks').textContent = q.pending_count || 0;
+        $('overviewCompletedTasks').textContent = q.completed_count || 0;
+        $('telemetryPending').textContent = q.pending_count || 0;
+        $('telemetryProcessing').textContent = q.processing_count || 0;
+        $('telemetryCompleted').textContent = q.completed_count || 0;
+        $('telemetryFailed').textContent = q.failed_count || 0;
+
+        if (q.pending_count > 0) {
+          $('topQueueDot').className = 'w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse';
+          $('topQueueText').textContent = `Processing (${q.pending_count} pending)`;
+        } else {
+          $('topQueueDot').className = 'w-1.5 h-1.5 rounded-full bg-emerald-500';
+          $('topQueueText').textContent = 'Worker Idle';
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // User Identity Modal
+    function openUserModal() {
+      $('modalUserInput').value = state.user;
+      $('modalUser').classList.remove('hidden');
+    }
+
+    function saveActiveUser() {
+      const val = $('modalUserInput').value.trim();
+      if (val) {
+        state.user = val;
+        localStorage.setItem('stockwiz_user_id', val);
+        closeModal('modalUser');
+        toast(`Switched identity to ${val}`);
+        fetchSubscriptions();
+        fetchOrders();
+      }
+    }
+
+    function closeModal(id) {
+      $(id).classList.add('hidden');
+    }
+
+    // Live search input listener
+    $('orderSearchInput').addEventListener('input', fetchOrders);
+
+    // Initialization
+    async function init() {
+      $('sidebarUserLabel').textContent = state.user;
+      await fetchFolios();
+      await fetchSubscriptions();
+      await fetchOrders();
+      await fetchQueueStatus();
+
+      // Periodic worker polling every 2.5s
+      setInterval(fetchQueueStatus, 2500);
+      // Auto-poll orders if on orders view
+      setInterval(() => {
+        if (!$('view-orders').classList.contains('hidden')) fetchOrders();
+      }, 4000);
+    }
+
+    init();
+  </script>
 </body>
 </html>
