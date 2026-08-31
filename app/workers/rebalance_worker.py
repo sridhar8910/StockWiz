@@ -9,6 +9,8 @@ from app.services.broker_service import BrokerService
 from app.models.order import Order
 from app.models.subscription import Subscription
 from app.models.folio import Folio
+from app.models.position import Position
+from app.models.rebalance_job import RebalanceJob
 from app.models.rebalance_task import RebalanceTaskRecord
 
 logger = logging.getLogger("rebalance_worker")
@@ -34,12 +36,18 @@ class RebalanceWorker:
             completed = db.query(RebalanceTaskRecord).filter(RebalanceTaskRecord.status == "COMPLETED").count()
             failed = db.query(RebalanceTaskRecord).filter(RebalanceTaskRecord.status == "FAILED").count()
             total = db.query(RebalanceTaskRecord).count()
+            
+            active_jobs = db.query(RebalanceJob).filter(RebalanceJob.status.in_(["PENDING", "PROCESSING"])).count()
+            total_jobs = db.query(RebalanceJob).count()
+
             return {
                 "pending_count": pending + processing,
                 "processing_count": processing,
                 "completed_count": completed,
                 "failed_count": failed,
                 "total_queued": total,
+                "active_jobs": active_jobs,
+                "total_jobs": total_jobs,
                 "is_running": self.worker_task is not None and not self.worker_task.done()
             }
         finally:
@@ -68,14 +76,20 @@ class RebalanceWorker:
 
     async def stop(self) -> None:
         self.is_running = False
-        if self.worker_task:
-            self.worker_task.cancel()
+        task = self.worker_task
+        self.worker_task = None
+        self._notify_event = None
+        if task:
             try:
-                await self.worker_task
-            except asyncio.CancelledError:
+                task.cancel()
+                try:
+                    current_loop = asyncio.get_running_loop()
+                    if task.get_loop() == current_loop:
+                        await task
+                except RuntimeError:
+                    pass
+            except (asyncio.CancelledError, Exception):
                 pass
-            self.worker_task = None
-            self._notify_event = None
             logger.info("Durable Rebalance Worker stopped.")
 
     async def _worker_loop(self) -> None:
@@ -152,18 +166,30 @@ class RebalanceWorker:
 
     async def _process_single_task(self, task_id: int) -> None:
         db: Session = SessionLocal()
+        now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        job_id = None
+        folio_id = None
         try:
             task = db.query(RebalanceTaskRecord).filter(RebalanceTaskRecord.id == task_id).first()
             if not task:
                 return
 
+            job_id = task.job_id
+            folio_id = task.folio_id
+
             sub = db.query(Subscription).filter(Subscription.id == task.subscription_id).first()
             if not sub or not sub.active:
                 task.status = "COMPLETED"
-                task.completed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                task.completed_at = now_utc
                 task.error_message = "Subscription inactive or cancelled; skipped."
+                
+                if job_id:
+                    job = db.query(RebalanceJob).filter(RebalanceJob.id == job_id).first()
+                    if job:
+                        job.completed_tasks += 1
+                
                 db.commit()
-                self._check_folio_rebalance_complete(db, task.folio_id)
+                self._check_rebalance_complete(db, job_id, folio_id)
                 return
 
             # Step 1: SELL outgoing stock with idempotency guard
@@ -218,12 +244,46 @@ class RebalanceWorker:
                 db.add(buy_order)
                 db.flush()
 
-            task.status = "COMPLETED"
-            task.completed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-            db.commit()
-            logger.info(f"Durable Rebalance Completed for Task {task.id} (User: {task.user_id})")
+            # Step 3: Update user's explicit Position state ledger
+            outgoing_pos = db.query(Position).filter(
+                Position.subscription_id == task.subscription_id,
+                Position.ticker == task.outgoing_ticker,
+                Position.status == "ACTIVE"
+            ).first()
 
-            self._check_folio_rebalance_complete(db, task.folio_id)
+            if outgoing_pos:
+                outgoing_pos.status = "LIQUIDATED"
+                outgoing_pos.updated_at = now_utc
+
+            incoming_pos = db.query(Position).filter(
+                Position.subscription_id == task.subscription_id,
+                Position.ticker == task.incoming_ticker,
+                Position.status == "ACTIVE"
+            ).first()
+
+            if not incoming_pos:
+                new_pos = Position(
+                    subscription_id=task.subscription_id,
+                    user_id=task.user_id,
+                    ticker=task.incoming_ticker,
+                    quantity=task.incoming_base_qty * task.multiplier,
+                    status="ACTIVE",
+                    updated_at=now_utc
+                )
+                db.add(new_pos)
+
+            task.status = "COMPLETED"
+            task.completed_at = now_utc
+            
+            if job_id:
+                job = db.query(RebalanceJob).filter(RebalanceJob.id == job_id).first()
+                if job:
+                    job.completed_tasks += 1
+
+            db.commit()
+            logger.info(f"Durable Rebalance Completed for Task {task.id} (User: {task.user_id}, Job: {job_id})")
+
+            self._check_rebalance_complete(db, job_id, folio_id)
         except Exception as e:
             db.rollback()
             logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
@@ -234,6 +294,10 @@ class RebalanceWorker:
                     t.retries += 1
                     if t.retries >= 3:
                         t.status = "FAILED"
+                        if t.job_id:
+                            job = db_fail.query(RebalanceJob).filter(RebalanceJob.id == t.job_id).first()
+                            if job:
+                                job.failed_tasks += 1
                     else:
                         t.status = "PENDING"
                         # Exponential backoff: 2s, 4s, 8s...
@@ -241,40 +305,65 @@ class RebalanceWorker:
                         t.next_retry_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(seconds=delay)
                     t.error_message = str(e)
                     db_fail.commit()
-                    self._check_folio_rebalance_complete(db_fail, t.folio_id)
+                    self._check_rebalance_complete(db_fail, t.job_id, t.folio_id)
                 db_fail.close()
             except Exception:
                 pass
         finally:
             db.close()
 
-    def _check_folio_rebalance_complete(self, db: Session, folio_id: int) -> None:
-        """If all rebalance tasks for the folio are finished, release folio lock and update status."""
+    def _check_rebalance_complete(self, db: Session, job_id: int | None, folio_id: int | None) -> None:
+        """Checks if a RebalanceJob is finished and releases the folio lock."""
+        now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         try:
-            remaining = db.query(RebalanceTaskRecord).filter(
-                RebalanceTaskRecord.folio_id == folio_id,
-                RebalanceTaskRecord.status.in_(["PENDING", "PROCESSING"])
-            ).count()
-            if remaining == 0:
-                folio = db.query(Folio).filter(Folio.id == folio_id).first()
-                if folio and folio.is_rebalancing:
-                    folio.is_rebalancing = False
-                    folio.version_id += 1
-                    db.commit()
-                    
-                    failed_count = db.query(RebalanceTaskRecord).filter(
-                        RebalanceTaskRecord.folio_id == folio_id,
-                        RebalanceTaskRecord.status == "FAILED"
+            if job_id:
+                job = db.query(RebalanceJob).filter(RebalanceJob.id == job_id).first()
+                if job and job.status in ["PENDING", "PROCESSING"]:
+                    remaining_tasks = db.query(RebalanceTaskRecord).filter(
+                        RebalanceTaskRecord.job_id == job_id,
+                        RebalanceTaskRecord.status.in_(["PENDING", "PROCESSING"])
                     ).count()
-                    if failed_count > 0:
-                        folio.rebalance_status = "PARTIAL_FAILURE"
-                        logger.warning(f"Folio {folio_id} rebalancing finished with PARTIAL_FAILURE ({failed_count} failed tasks).")
-                    else:
-                        folio.rebalance_status = "COMPLETED"
-                        logger.info(f"Folio {folio_id} rebalancing COMPLETED successfully.")
-                    db.commit()
+                    
+                    if remaining_tasks == 0:
+                        failed_count = db.query(RebalanceTaskRecord).filter(
+                            RebalanceTaskRecord.job_id == job_id,
+                            RebalanceTaskRecord.status == "FAILED"
+                        ).count()
+                        
+                        if failed_count > 0:
+                            job.status = "PARTIAL_FAILURE"
+                        else:
+                            job.status = "COMPLETED"
+                        job.completed_at = now_utc
+                        db.commit()
+
+            if folio_id:
+                # Check if all tasks for this folio across active jobs are done
+                remaining_folio_tasks = db.query(RebalanceTaskRecord).filter(
+                    RebalanceTaskRecord.folio_id == folio_id,
+                    RebalanceTaskRecord.status.in_(["PENDING", "PROCESSING"])
+                ).count()
+
+                if remaining_folio_tasks == 0:
+                    folio = db.query(Folio).filter(Folio.id == folio_id).first()
+                    if folio and folio.is_rebalancing:
+                        folio.is_rebalancing = False
+                        folio.version_id += 1
+                        
+                        failed_count = db.query(RebalanceTaskRecord).filter(
+                            RebalanceTaskRecord.folio_id == folio_id,
+                            RebalanceTaskRecord.status == "FAILED"
+                        ).count()
+                        
+                        if failed_count > 0:
+                            folio.rebalance_status = "PARTIAL_FAILURE"
+                            logger.warning(f"Folio {folio_id} rebalancing finished with PARTIAL_FAILURE ({failed_count} failed tasks).")
+                        else:
+                            folio.rebalance_status = "COMPLETED"
+                            logger.info(f"Folio {folio_id} rebalancing COMPLETED successfully.")
+                        db.commit()
         except Exception as e:
-            logger.error(f"Error checking folio completion: {e}")
+            logger.error(f"Error checking rebalance completion: {e}")
 
 # Shared singleton instance
 rebalance_worker = RebalanceWorker()

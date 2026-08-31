@@ -1,11 +1,13 @@
 import datetime
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 class RebalanceTaskRecord(Base):
     __tablename__ = "rebalance_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("rebalance_jobs.id", ondelete="CASCADE"), nullable=True, index=True)
     folio_id = Column(Integer, ForeignKey("folios.id", ondelete="CASCADE"), nullable=False)
     subscription_id = Column(Integer, ForeignKey("subscriptions.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(String, index=True, nullable=False)
@@ -18,5 +20,11 @@ class RebalanceTaskRecord(Base):
     error_message = Column(String, nullable=True)
     retries = Column(Integer, default=0, nullable=False)
     next_retry_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None), nullable=False)
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
+        nullable=False
+    )
     completed_at = Column(DateTime, nullable=True)
+
+    job = relationship("RebalanceJob", back_populates="tasks")

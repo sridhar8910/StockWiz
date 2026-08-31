@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Boolean, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -25,4 +25,6 @@ class FolioStock(Base):
 
     __table_args__ = (
         UniqueConstraint("folio_id", "ticker", name="uq_folio_ticker"),
+        CheckConstraint("base_quantity > 0", name="ck_base_quantity_positive"),
+        CheckConstraint("length(ticker) > 0", name="ck_ticker_non_empty"),
     )
