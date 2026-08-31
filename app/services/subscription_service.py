@@ -34,7 +34,7 @@ class SubscriptionService:
         if len(folio.stocks) != 12:
             raise ValueError(f"Folio must contain exactly 12 stocks, but has {len(folio.stocks)}")
 
-        # Application-level check (quick check)
+        # Fast read check
         existing = db.query(Subscription).filter(
             Subscription.user_id == cleaned_user_id,
             Subscription.folio_id == folio_id,
@@ -67,13 +67,14 @@ class SubscriptionService:
                 qty = stock.base_quantity * multiplier
                 idemp_key = f"sub-{sub.id}-{stock.ticker}-BUY"
                 
-                # Call broker
+                # Call broker with active DB session
                 receipt = BrokerService.execute_trade(
                     user_id=cleaned_user_id,
                     ticker=stock.ticker,
                     action="BUY",
                     quantity=qty,
-                    idempotency_key=idemp_key
+                    idempotency_key=idemp_key,
+                    db=db
                 )
                 
                 # Persist receipt
@@ -111,7 +112,14 @@ class SubscriptionService:
 
     @staticmethod
     def exit_subscription(db: Session, subscription_id: int) -> Tuple[Subscription, List[Order]]:
-        # 1. Atomic conditional update to transition active -> inactive
+        # Fast read check
+        sub_check = db.query(Subscription).filter(Subscription.id == subscription_id).first()
+        if not sub_check:
+            raise ValueError(f"Subscription with ID {subscription_id} not found")
+        if not sub_check.active:
+            raise ValueError("Subscription is already inactive")
+
+        # Atomic conditional update to transition active -> inactive
         exit_sql = text(
             "UPDATE subscriptions SET active = 0, status = 'EXITED' WHERE id = :id AND active = 1"
         )
@@ -119,10 +127,6 @@ class SubscriptionService:
         db.flush()
 
         if result.rowcount == 0:
-            # Check if subscription exists or was already inactive
-            sub_check = db.query(Subscription).filter(Subscription.id == subscription_id).first()
-            if not sub_check:
-                raise ValueError(f"Subscription with ID {subscription_id} not found")
             raise ValueError("Subscription is already inactive")
 
         sub = db.query(Subscription).filter(Subscription.id == subscription_id).first()
@@ -149,7 +153,8 @@ class SubscriptionService:
                         ticker=pos.ticker,
                         action="SELL",
                         quantity=pos.quantity,
-                        idempotency_key=idemp_key
+                        idempotency_key=idemp_key,
+                        db=db
                     )
                     order = Order(
                         order_id=receipt["order_id"],
@@ -176,7 +181,8 @@ class SubscriptionService:
                         ticker=stock.ticker,
                         action="SELL",
                         quantity=qty,
-                        idempotency_key=idemp_key
+                        idempotency_key=idemp_key,
+                        db=db
                     )
                     order = Order(
                         order_id=receipt["order_id"],

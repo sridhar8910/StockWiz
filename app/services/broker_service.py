@@ -1,6 +1,7 @@
 import uuid
 import datetime
 from typing import Optional, Dict
+from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.models.order import Order
 
@@ -20,7 +21,8 @@ class BrokerService:
         ticker: str,
         action: str,
         quantity: float,
-        idempotency_key: Optional[str] = None
+        idempotency_key: Optional[str] = None,
+        db: Optional[Session] = None
     ) -> dict:
         if not user_id or not user_id.strip():
             raise ValueError("user_id is required and cannot be empty")
@@ -35,9 +37,13 @@ class BrokerService:
 
         # 1. Durable Idempotency: Check database first if key exists
         if idempotency_key:
-            db = SessionLocal()
+            should_close = False
+            session = db
+            if session is None:
+                session = SessionLocal()
+                should_close = True
             try:
-                existing_order = db.query(Order).filter(Order.idempotency_key == idempotency_key).first()
+                existing_order = session.query(Order).filter(Order.idempotency_key == idempotency_key).first()
                 if existing_order:
                     return {
                         "order_id": existing_order.order_id,
@@ -52,7 +58,8 @@ class BrokerService:
             except Exception:
                 pass
             finally:
-                db.close()
+                if should_close:
+                    session.close()
 
             # 2. Check in-memory ledger
             if idempotency_key in cls._executed_receipts:

@@ -12,20 +12,36 @@ def test_validation_subscribe_invalid_folio(client):
     assert "not found" in response.json()["detail"].lower()
 
 def test_validation_subscribe_invalid_multiplier(client):
-    # Negative multiplier
+    # Negative multiplier -> 400 Bad Request per Spec Section 18
     payload = {
         "user_id": "user-101",
         "folio_id": 1,
         "multiplier": -1.5
     }
     response = client.post("/api/subscriptions", json=payload)
-    # Pydantic validation (gt=0) returns 422
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert "greater than 0" in response.json()["detail"]
 
-    # Zero multiplier
+    # Zero multiplier -> 400 Bad Request per Spec Section 18
     payload["multiplier"] = 0
     response = client.post("/api/subscriptions", json=payload)
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert "greater than 0" in response.json()["detail"]
+
+def test_validation_subscribe_empty_user_id(client):
+    # Empty string user_id -> 400 Bad Request
+    payload = {
+        "user_id": "",
+        "folio_id": 1,
+        "multiplier": 1.0
+    }
+    response = client.post("/api/subscriptions", json=payload)
+    assert response.status_code == 400
+
+    # Whitespace-only user_id -> 400 Bad Request
+    payload["user_id"] = "   "
+    response = client.post("/api/subscriptions", json=payload)
+    assert response.status_code == 400
 
 def test_validation_rebalance_invalid_folio(client):
     payload = {
@@ -67,5 +83,5 @@ def test_validation_rebalance_invalid_base_quantity(client):
         "new_base_quantity": -3.5
     }
     response = client.post("/api/admin/rebalance", json=payload)
-    # Pydantic validation (gt=0) returns 422
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert "greater than 0" in response.json()["detail"]

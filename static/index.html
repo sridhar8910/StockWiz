@@ -646,7 +646,17 @@
         let data = {};
         try { data = await res.json(); } catch(e) {}
         if (!res.ok) {
-          throw new Error(data.detail || data.message || `Request failed with status ${res.status}`);
+          let errorMsg = `Request failed with status ${res.status}`;
+          if (typeof data.detail === 'string') {
+            errorMsg = data.detail;
+          } else if (Array.isArray(data.detail)) {
+            errorMsg = data.detail.map(e => (typeof e === 'string' ? e : e.msg || JSON.stringify(e))).join('; ');
+          } else if (data.detail && typeof data.detail === 'object') {
+            errorMsg = data.detail.msg || JSON.stringify(data.detail);
+          } else if (data.message) {
+            errorMsg = data.message;
+          }
+          throw new Error(errorMsg);
         }
         return data;
       } catch (err) {

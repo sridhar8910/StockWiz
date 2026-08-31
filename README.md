@@ -118,7 +118,7 @@ flowchart LR
 
 ## 4. Run Automated Tests
 
-The test suite contains **31 comprehensive automated tests** covering subscriptions, exits, rebalancing cascades, multithreaded subscription races, atomic rebalance locking, crash recovery, and position ledgers:
+The test suite contains **32 comprehensive automated tests** covering subscriptions, exits, rebalancing cascades, multithreaded subscription races, atomic rebalance locking, crash recovery, and position ledgers:
 
 ```bash
 python -m pytest -v

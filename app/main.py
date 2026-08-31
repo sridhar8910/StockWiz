@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.db.database import engine, Base, SessionLocal, run_migrations
@@ -56,7 +57,7 @@ StockWiz is a high-throughput, stateful basket-trading engine built with **FastA
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Initialize DB schema & apply lightweight SQLite migrations
+    # 1. Initialize DB schema & apply lightweight migrations
     Base.metadata.create_all(bind=engine)
     run_migrations(engine)
     
@@ -84,6 +85,20 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan
 )
+
+# Standardize RequestValidationError to return HTTP 400 Bad Request per Spec Section 18
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    error_messages = []
+    for err in errors:
+        loc = " -> ".join(str(l) for l in err.get("loc", []) if l != "body")
+        msg = err.get("msg", "Invalid input")
+        error_messages.append(f"{loc}: {msg}" if loc else msg)
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "; ".join(error_messages)}
+    )
 
 # Register routers
 app.include_router(folios_router)
