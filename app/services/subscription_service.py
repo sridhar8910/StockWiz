@@ -1,5 +1,6 @@
 import datetime
 from typing import List, Tuple
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.models.subscription import Subscription
@@ -47,12 +48,13 @@ class SubscriptionService:
             user_id=cleaned_user_id,
             folio_id=folio_id,
             multiplier=multiplier,
-            active=True
+            active=True,
+            status="ACTIVE"
         )
         db.add(sub)
         
         try:
-            db.flush()  # to get sub.id and trigger DB unique index check
+            db.flush()  # to get sub.id and trigger DB unique partial index check
         except IntegrityError:
             db.rollback()
             raise ValueError(f"User is already active in Folio '{folio.name}'")
@@ -109,21 +111,26 @@ class SubscriptionService:
 
     @staticmethod
     def exit_subscription(db: Session, subscription_id: int) -> Tuple[Subscription, List[Order]]:
-        sub = db.query(Subscription).filter(Subscription.id == subscription_id).first()
-        if not sub:
-            raise ValueError(f"Subscription with ID {subscription_id} not found")
-        
-        if not sub.active:
+        # 1. Atomic conditional update to transition active -> inactive
+        exit_sql = text(
+            "UPDATE subscriptions SET active = 0, status = 'EXITED' WHERE id = :id AND active = 1"
+        )
+        result = db.execute(exit_sql, {"id": subscription_id})
+        db.flush()
+
+        if result.rowcount == 0:
+            # Check if subscription exists or was already inactive
+            sub_check = db.query(Subscription).filter(Subscription.id == subscription_id).first()
+            if not sub_check:
+                raise ValueError(f"Subscription with ID {subscription_id} not found")
             raise ValueError("Subscription is already inactive")
 
+        sub = db.query(Subscription).filter(Subscription.id == subscription_id).first()
         folio = db.query(Folio).filter(Folio.id == sub.folio_id).first()
         if not folio:
             raise ValueError(f"Folio with ID {sub.folio_id} not found for subscription")
 
         try:
-            # Mark subscription as inactive inside transaction
-            sub.active = False
-            db.flush()
             orders = []
             now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
@@ -160,7 +167,7 @@ class SubscriptionService:
                     pos.status = "LIQUIDATED"
                     pos.updated_at = now_utc
             else:
-                # Fallback for historical/legacy subscriptions without position records
+                # Fallback for legacy subscriptions
                 for stock in folio.stocks:
                     qty = stock.base_quantity * sub.multiplier
                     idemp_key = f"exit-{sub.id}-{stock.ticker}-SELL"

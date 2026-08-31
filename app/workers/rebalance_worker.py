@@ -178,16 +178,10 @@ class RebalanceWorker:
             folio_id = task.folio_id
 
             sub = db.query(Subscription).filter(Subscription.id == task.subscription_id).first()
-            if not sub or not sub.active:
+            if not sub or not sub.active or sub.status == "EXITED":
                 task.status = "COMPLETED"
                 task.completed_at = now_utc
-                task.error_message = "Subscription inactive or cancelled; skipped."
-                
-                if job_id:
-                    job = db.query(RebalanceJob).filter(RebalanceJob.id == job_id).first()
-                    if job:
-                        job.completed_tasks += 1
-                
+                task.error_message = "Subscription inactive or exited; skipped."
                 db.commit()
                 self._check_rebalance_complete(db, job_id, folio_id)
                 return
@@ -274,13 +268,8 @@ class RebalanceWorker:
 
             task.status = "COMPLETED"
             task.completed_at = now_utc
-            
-            if job_id:
-                job = db.query(RebalanceJob).filter(RebalanceJob.id == job_id).first()
-                if job:
-                    job.completed_tasks += 1
-
             db.commit()
+
             logger.info(f"Durable Rebalance Completed for Task {task.id} (User: {task.user_id}, Job: {job_id})")
 
             self._check_rebalance_complete(db, job_id, folio_id)
@@ -294,10 +283,6 @@ class RebalanceWorker:
                     t.retries += 1
                     if t.retries >= 3:
                         t.status = "FAILED"
-                        if t.job_id:
-                            job = db_fail.query(RebalanceJob).filter(RebalanceJob.id == t.job_id).first()
-                            if job:
-                                job.failed_tasks += 1
                     else:
                         t.status = "PENDING"
                         # Exponential backoff: 2s, 4s, 8s...
@@ -313,54 +298,58 @@ class RebalanceWorker:
             db.close()
 
     def _check_rebalance_complete(self, db: Session, job_id: int | None, folio_id: int | None) -> None:
-        """Checks if a RebalanceJob is finished and releases the folio lock."""
+        """Checks if a RebalanceJob is finished and releases the folio lock using derived task counts."""
         now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         try:
             if job_id:
                 job = db.query(RebalanceJob).filter(RebalanceJob.id == job_id).first()
                 if job and job.status in ["PENDING", "PROCESSING"]:
-                    remaining_tasks = db.query(RebalanceTaskRecord).filter(
+                    pending_tasks = db.query(RebalanceTaskRecord).filter(
                         RebalanceTaskRecord.job_id == job_id,
                         RebalanceTaskRecord.status.in_(["PENDING", "PROCESSING"])
                     ).count()
                     
-                    if remaining_tasks == 0:
-                        failed_count = db.query(RebalanceTaskRecord).filter(
-                            RebalanceTaskRecord.job_id == job_id,
-                            RebalanceTaskRecord.status == "FAILED"
-                        ).count()
-                        
-                        if failed_count > 0:
+                    completed_tasks = db.query(RebalanceTaskRecord).filter(
+                        RebalanceTaskRecord.job_id == job_id,
+                        RebalanceTaskRecord.status == "COMPLETED"
+                    ).count()
+
+                    failed_tasks = db.query(RebalanceTaskRecord).filter(
+                        RebalanceTaskRecord.job_id == job_id,
+                        RebalanceTaskRecord.status == "FAILED"
+                    ).count()
+
+                    # Derive exact counter values from source of truth
+                    job.completed_tasks = completed_tasks
+                    job.failed_tasks = failed_tasks
+                    
+                    if pending_tasks == 0:
+                        if failed_tasks > 0:
                             job.status = "PARTIAL_FAILURE"
                         else:
                             job.status = "COMPLETED"
                         job.completed_at = now_utc
+                        
+                        # Release the folio lock when the active job finishes
+                        folio = db.query(Folio).filter(Folio.id == job.folio_id).first()
+                        if folio and folio.is_rebalancing:
+                            folio.is_rebalancing = False
+                            folio.version_id += 1
+                            folio.rebalance_status = job.status
+                            logger.info(f"Folio {job.folio_id} rebalancing finished with status {job.status}.")
                         db.commit()
-
-            if folio_id:
-                # Check if all tasks for this folio across active jobs are done
-                remaining_folio_tasks = db.query(RebalanceTaskRecord).filter(
+            elif folio_id:
+                # Fallback for tasks not linked to a job_id
+                remaining = db.query(RebalanceTaskRecord).filter(
                     RebalanceTaskRecord.folio_id == folio_id,
                     RebalanceTaskRecord.status.in_(["PENDING", "PROCESSING"])
                 ).count()
-
-                if remaining_folio_tasks == 0:
+                if remaining == 0:
                     folio = db.query(Folio).filter(Folio.id == folio_id).first()
                     if folio and folio.is_rebalancing:
                         folio.is_rebalancing = False
                         folio.version_id += 1
-                        
-                        failed_count = db.query(RebalanceTaskRecord).filter(
-                            RebalanceTaskRecord.folio_id == folio_id,
-                            RebalanceTaskRecord.status == "FAILED"
-                        ).count()
-                        
-                        if failed_count > 0:
-                            folio.rebalance_status = "PARTIAL_FAILURE"
-                            logger.warning(f"Folio {folio_id} rebalancing finished with PARTIAL_FAILURE ({failed_count} failed tasks).")
-                        else:
-                            folio.rebalance_status = "COMPLETED"
-                            logger.info(f"Folio {folio_id} rebalancing COMPLETED successfully.")
+                        folio.rebalance_status = "COMPLETED"
                         db.commit()
         except Exception as e:
             logger.error(f"Error checking rebalance completion: {e}")

@@ -1,6 +1,9 @@
 import os
-from sqlalchemy import create_engine, event
+import logging
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
+
+logger = logging.getLogger("database")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./stockwiz.db")
 
@@ -31,9 +34,8 @@ Base = declarative_base()
 
 def run_migrations(engine):
     """
-    Safely apply lightweight SQLite schema migrations and indexes for existing database files.
+    Safely apply schema migrations and unique indexes for database tables.
     """
-    from sqlalchemy import inspect, text
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
     
@@ -51,11 +53,7 @@ def run_migrations(engine):
             columns = [col["name"] for col in inspector.get_columns("orders")]
             if "idempotency_key" not in columns:
                 conn.execute(text("ALTER TABLE orders ADD COLUMN idempotency_key VARCHAR"))
-            # Ensure unique index on idempotency_key
-            try:
-                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_idempotency_key ON orders(idempotency_key) WHERE idempotency_key IS NOT NULL"))
-            except Exception:
-                pass
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_idempotency_key ON orders(idempotency_key) WHERE idempotency_key IS NOT NULL"))
 
         if "rebalance_tasks" in table_names:
             columns = [col["name"] for col in inspector.get_columns("rebalance_tasks")]
@@ -65,10 +63,13 @@ def run_migrations(engine):
                 conn.execute(text("ALTER TABLE rebalance_tasks ADD COLUMN job_id INTEGER"))
 
         if "subscriptions" in table_names:
-            try:
-                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_active_user_folio ON subscriptions(user_id, folio_id) WHERE active = 1"))
-            except Exception:
-                pass
+            columns = [col["name"] for col in inspector.get_columns("subscriptions")]
+            if "status" not in columns:
+                conn.execute(text("ALTER TABLE subscriptions ADD COLUMN status VARCHAR DEFAULT 'ACTIVE' NOT NULL"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_active_user_folio ON subscriptions(user_id, folio_id) WHERE active = 1"))
+
+        if "positions" in table_names:
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_active_position ON positions(subscription_id, ticker) WHERE status = 'ACTIVE'"))
 
 def get_db():
     db = SessionLocal()

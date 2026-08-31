@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Index
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Index, CheckConstraint, text
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -22,5 +22,16 @@ class Position(Base):
     subscription = relationship("Subscription", back_populates="positions")
 
     __table_args__ = (
-        Index("ix_sub_ticker_active", "subscription_id", "ticker", "status"),
+        # Partial unique index: Guarantee only ONE active position per (subscription_id, ticker)
+        Index(
+            "uq_active_position",
+            "subscription_id",
+            "ticker",
+            unique=True,
+            sqlite_where=text("status = 'ACTIVE'"),
+            postgresql_where=text("status = 'ACTIVE'")
+        ),
+        CheckConstraint("quantity > 0", name="ck_position_quantity_positive"),
+        CheckConstraint("length(ticker) > 0", name="ck_position_ticker_non_empty"),
+        CheckConstraint("status IN ('ACTIVE', 'LIQUIDATED')", name="ck_position_status_valid"),
     )

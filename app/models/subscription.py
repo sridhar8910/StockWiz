@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Boolean, Index, text
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Boolean, Index, CheckConstraint, text
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -10,6 +10,7 @@ class Subscription(Base):
     folio_id = Column(Integer, ForeignKey("folios.id"), nullable=False)
     multiplier = Column(Float, nullable=False)
     active = Column(Boolean, default=True, nullable=False)
+    status = Column(String, default="ACTIVE", nullable=False)  # ACTIVE, EXITED
 
     # Relationship to get folio
     folio = relationship("Folio", lazy="joined")
@@ -25,4 +26,6 @@ class Subscription(Base):
             sqlite_where=text("active = 1"),
             postgresql_where=text("active = true")
         ),
+        CheckConstraint("multiplier > 0", name="ck_sub_multiplier_positive"),
+        CheckConstraint("status IN ('ACTIVE', 'EXITED')", name="ck_sub_status_valid"),
     )

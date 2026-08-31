@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/admin", tags=["Admin"])
     "/rebalance",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Trigger Asynchronous Folio Rebalance",
-    description="Swap a stock inside a Folio (e.g. replace `RELIANCE` with `IDEA`). Atomically acquires a DB row lock on the Folio, updates the composition, records a RebalanceJob batch, and enqueues durable background tasks for active subscribers.",
+    description="Swap a stock inside a Folio (e.g. replace `RELIANCE` with `IDEA`). Validates business invariants, atomically claims the Folio rebalance lock via conditional SQL update, creates a RebalanceJob batch, and enqueues durable background tasks for active subscribers.",
     responses={
         202: {"description": "Rebalance request accepted and fan-out cascade queued asynchronously."},
         400: {"description": "Validation error (e.g. outgoing stock missing or incoming stock duplicate)."},
@@ -29,58 +29,35 @@ router = APIRouter(prefix="/api/admin", tags=["Admin"])
 def trigger_rebalance(payload: RebalanceRequest, db: Session = Depends(get_db)):
     """
     Triggers an asynchronous stock replacement cascade across all active subscribers of a Folio.
-    Enforces atomic row-level concurrency locking and batch job tracking.
+    Validates domain parameters first, then acquires the atomic conditional lock.
     """
-    # 1. Atomic Concurrency Lock: Check and claim lock in a single atomic SQL statement
-    lock_query = text(
-        "UPDATE folios SET is_rebalancing = 1, rebalance_status = 'REBALANCING' WHERE id = :id AND is_rebalancing = 0"
-    )
-    result = db.execute(lock_query, {"id": payload.folio_id})
-    db.flush()
-
-    if result.rowcount == 0:
-        folio = db.query(Folio).filter(Folio.id == payload.folio_id).first()
-        if not folio:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Folio with ID {payload.folio_id} not found"
-            )
+    # 1. Fetch target folio
+    folio = db.query(Folio).filter(Folio.id == payload.folio_id).first()
+    if not folio:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Rebalance already in progress for Folio '{folio.name}'. Please wait until pending tasks finish."
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Folio with ID {payload.folio_id} not found"
         )
 
-    # 2. Fetch locked folio fresh
-    folio = db.query(Folio).filter(Folio.id == payload.folio_id).first()
-
-    # 3. Find outgoing stock in the folio
+    # 2. Validation: Find outgoing stock in the folio
     outgoing_stock = next((s for s in folio.stocks if s.ticker.upper() == payload.outgoing_ticker.upper()), None)
     if not outgoing_stock:
-        folio.is_rebalancing = False
-        folio.rebalance_status = "IDLE"
-        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Outgoing stock '{payload.outgoing_ticker}' does not exist in Folio '{folio.name}'"
         )
 
-    # 4. Verify incoming stock is not already present
+    # 3. Validation: Verify incoming stock is not already present
     incoming_stock_exists = any(s.ticker.upper() == payload.incoming_ticker.upper() for s in folio.stocks)
     if incoming_stock_exists:
-        folio.is_rebalancing = False
-        folio.rebalance_status = "IDLE"
-        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Incoming stock '{payload.incoming_ticker}' already exists in Folio '{folio.name}'"
         )
 
-    # 5. Validate quantity
+    # 4. Validation: Validate incoming base quantity
     incoming_base_qty = payload.new_base_quantity if payload.new_base_quantity is not None else outgoing_stock.base_quantity
     if incoming_base_qty <= 0:
-        folio.is_rebalancing = False
-        folio.rebalance_status = "IDLE"
-        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="New base quantity must be positive"
@@ -88,6 +65,21 @@ def trigger_rebalance(payload: RebalanceRequest, db: Session = Depends(get_db)):
 
     old_ticker = outgoing_stock.ticker
     old_base_qty = outgoing_stock.base_quantity
+
+    # 5. Atomic Conditional Lock: Atomically claim rebalance state via conditional SQL UPDATE
+    lock_query = text(
+        "UPDATE folios SET is_rebalancing = 1, rebalance_status = 'REBALANCING' WHERE id = :id AND is_rebalancing = 0"
+    )
+    result = db.execute(lock_query, {"id": payload.folio_id})
+    db.flush()
+
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Rebalance already in progress for Folio '{folio.name}'. Please wait until pending tasks finish."
+        )
+
+    db.refresh(folio)
 
     # 6. Atomic database swap, RebalanceJob creation & durable task enqueuing
     try:
@@ -130,9 +122,6 @@ def trigger_rebalance(payload: RebalanceRequest, db: Session = Depends(get_db)):
             folio.version_id += 1
             folio.rebalance_status = "COMPLETED"
         else:
-            folio.is_rebalancing = True
-            folio.rebalance_status = "REBALANCING"
-            
             # Insert durable child task records linked to the job
             for sub in active_subs:
                 task_rec = RebalanceTaskRecord(
