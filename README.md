@@ -63,18 +63,19 @@ flowchart LR
    - During rebalancing, the worker marks the outgoing stock position as `LIQUIDATED` and creates an `ACTIVE` position for the incoming stock.
    - When a user exits, the system liquidates their actual held `Position` records, ensuring 100% position accuracy even across multiple historical rebalances or mid-flight operations.
 3. **Atomic Concurrency Lock (`UPDATE folios SET is_rebalancing = 1 ... WHERE is_rebalancing = 0`)**:
-   - Rebalancing acquires an atomic database row conditional lock. Competing concurrent rebalance requests for the same Folio receive `409 Conflict` at the database level.
+   - Rebalancing acquires an atomic conditional state lock. Competing concurrent rebalance requests for the same Folio receive `409 Conflict` at the database level.
 4. **Active Subscription Uniqueness (`uq_active_user_folio`)**:
    - A database partial unique index on `subscriptions(user_id, folio_id) WHERE active = 1` prevents race conditions where concurrent requests could create duplicate active subscriptions for the same user.
 5. **RebalanceJob Batch Orchestration (`RebalanceJob` entity)**:
-   - Rebalancing operations create a parent `RebalanceJob` record. Child tasks are linked via `job_id`, providing clean batch lifecycle tracking (`PENDING` $\rightarrow$ `PROCESSING` $\rightarrow$ `COMPLETED` / `PARTIAL_FAILURE`).
-6. **Durable In-Process Background Worker**:
-   - Background tasks are persisted in the database with atomic row-level claim queries (`UPDATE rebalance_tasks SET status = 'PROCESSING' WHERE id = :id AND status = 'PENDING'`).
-   - **Crash Recovery**: Automatically resets stuck `PROCESSING` tasks to `PENDING` on startup, guaranteeing zero task loss across restarts.
-   - **Broker Idempotency**: Trade execution keys (`rebal-{task_id}-{ticker}-{action}`) are uniquely indexed in the database to guarantee at-least-once recovery without duplicate fills.
+   - Rebalancing operations create a parent `RebalanceJob` record. Child tasks are linked via `job_id`, providing clean batch lifecycle tracking (`PENDING` $\rightarrow$ `PROCESSING` $\rightarrow$ `COMPLETED` / `PARTIAL_FAILURE` / `FAILED`).
+6. **Durable In-Process Background Worker with Leases & Threadpool Offloading**:
+   - **Non-Blocking Execution**: Synchronous broker operations are offloaded to worker threads via `asyncio.to_thread` to ensure the FastAPI event loop is never blocked.
+   - **Lease-Aware Task Claims**: Workers atomically claim tasks with a lease (`worker_id`, `claimed_at`, `lease_until`) preventing dual-worker task contention.
+   - **Crash Recovery**: Stuck `PROCESSING` tasks with expired leases are automatically recovered on startup.
+   - **Order Idempotency**: Database-backed uniqueness on `Order.idempotency_key` guarantees safe local retry semantics without duplicate fills.
 
 ### Persistence Strategy (SQLite vs. PostgreSQL)
-- **Prototype Default**: SQLite with WAL (`PRAGMA journal_mode=WAL`) and `PRAGMA busy_timeout=30000` for zero-configuration local evaluation.
+- **Prototype Default**: SQLite with WAL (`PRAGMA journal_mode=WAL`), `PRAGMA foreign_keys=ON`, and `PRAGMA busy_timeout=30000` for zero-configuration local evaluation.
 - **Production Architecture**: The data layer is decoupled via SQLAlchemy 2.0 ORM models and is directly compatible with PostgreSQL (`postgresql://...`) for multi-replica deployments with PostgreSQL row-level locks (`SELECT ... FOR UPDATE`) and Celery/Arq worker queues.
 
 ---

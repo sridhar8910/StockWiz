@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import logging
+import uuid
 from typing import Dict, Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -18,9 +19,11 @@ logging.basicConfig(level=logging.INFO)
 
 class RebalanceWorker:
     def __init__(self):
+        self.worker_id = f"worker-{uuid.uuid4().hex[:8]}"
         self._notify_event: asyncio.Event | None = None
         self.worker_task: asyncio.Task | None = None
         self.is_running = False
+        self.lease_duration_seconds = 15
 
     def notify(self) -> None:
         """Signal worker that new tasks were added to DB."""
@@ -41,6 +44,7 @@ class RebalanceWorker:
             total_jobs = db.query(RebalanceJob).count()
 
             return {
+                "worker_id": self.worker_id,
                 "pending_count": pending + processing,
                 "processing_count": processing,
                 "completed_count": completed,
@@ -72,7 +76,7 @@ class RebalanceWorker:
             self._notify_event = asyncio.Event()
             self.is_running = True
             self.worker_task = asyncio.create_task(self._worker_loop())
-            logger.info("Durable Rebalance Worker started.")
+            logger.info(f"Durable Rebalance Worker started with worker_id={self.worker_id}.")
 
     async def stop(self) -> None:
         self.is_running = False
@@ -88,12 +92,14 @@ class RebalanceWorker:
                         await task
                 except RuntimeError:
                     pass
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                logger.error(f"Error during worker shutdown: {e}")
             logger.info("Durable Rebalance Worker stopped.")
 
     async def _worker_loop(self) -> None:
-        # Recover any stuck tasks on startup
+        # Recover expired lease tasks on startup
         self._recover_stuck_tasks()
         
         while self.is_running:
@@ -110,47 +116,60 @@ class RebalanceWorker:
                     await asyncio.sleep(0.5)
 
     def _recover_stuck_tasks(self) -> None:
-        """Reset PROCESSING tasks back to PENDING on startup to recover from server crashes."""
+        """Reset expired PROCESSING tasks back to PENDING on startup to recover from server crashes."""
         db: Session = SessionLocal()
+        now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         try:
-            stuck_tasks = db.query(RebalanceTaskRecord).filter(RebalanceTaskRecord.status == "PROCESSING").all()
+            stuck_tasks = db.query(RebalanceTaskRecord).filter(
+                RebalanceTaskRecord.status == "PROCESSING",
+                (RebalanceTaskRecord.lease_until == None) | (RebalanceTaskRecord.lease_until < now_utc)
+            ).all()
             for t in stuck_tasks:
                 t.status = "PENDING"
+                t.worker_id = None
+                t.lease_until = None
             if stuck_tasks:
                 db.commit()
-                logger.info(f"Recovered {len(stuck_tasks)} stuck rebalance tasks.")
+                logger.info(f"Recovered {len(stuck_tasks)} expired rebalance tasks.")
         except Exception as e:
             db.rollback()
-            logger.error(f"Error recovering stuck tasks: {e}")
+            logger.error(f"Error recovering expired tasks: {e}")
         finally:
             db.close()
 
     async def _process_next_batch(self) -> bool:
-        """Atomically claims a pending task to prevent multi-worker race conditions."""
+        """Atomically claims a pending or expired task with a time-bounded lease."""
         db: Session = SessionLocal()
         task_id = None
         now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        lease_until = now_utc + datetime.timedelta(seconds=self.lease_duration_seconds)
         try:
-            # Query candidate task
             candidate = db.query(RebalanceTaskRecord).filter(
-                RebalanceTaskRecord.status == "PENDING",
+                (RebalanceTaskRecord.status == "PENDING") |
+                ((RebalanceTaskRecord.status == "PROCESSING") & (RebalanceTaskRecord.lease_until < now_utc)),
                 (RebalanceTaskRecord.next_retry_at == None) | (RebalanceTaskRecord.next_retry_at <= now_utc)
             ).order_by(RebalanceTaskRecord.id).first()
 
             if not candidate:
                 return False
 
-            # Atomic conditional claim: update status to PROCESSING only if still PENDING
+            # Atomic conditional claim with worker lease
             claim_query = text(
-                "UPDATE rebalance_tasks SET status = 'PROCESSING' WHERE id = :task_id AND status = 'PENDING'"
+                "UPDATE rebalance_tasks "
+                "SET status = 'PROCESSING', worker_id = :worker_id, claimed_at = :now_utc, lease_until = :lease_until "
+                "WHERE id = :task_id AND (status = 'PENDING' OR (status = 'PROCESSING' AND lease_until < :now_utc))"
             )
-            result = db.execute(claim_query, {"task_id": candidate.id})
+            result = db.execute(claim_query, {
+                "task_id": candidate.id,
+                "worker_id": self.worker_id,
+                "now_utc": now_utc,
+                "lease_until": lease_until
+            })
             db.commit()
 
             if result.rowcount > 0:
                 task_id = candidate.id
             else:
-                # Another worker claimed it first
                 return True
         except Exception as e:
             db.rollback()
@@ -185,7 +204,7 @@ class RebalanceWorker:
             db.flush()
 
             if sub_claim_res.rowcount == 0:
-                # Subscription has exited, is exiting, or is inactive
+                # Subscription has exited or is inactive
                 task.status = "COMPLETED"
                 task.completed_at = now_utc
                 task.error_message = "Subscription inactive or exited; skipped."
@@ -193,12 +212,13 @@ class RebalanceWorker:
                 self._check_rebalance_complete(db, job_id, folio_id)
                 return
 
-            # Step 1: SELL outgoing stock with idempotency guard
+            # Step 1: SELL outgoing stock (non-blocking threadpool execution)
             sell_idemp = f"rebal-{task.id}-{task.outgoing_ticker}-SELL"
             existing_sell = db.query(Order).filter(Order.idempotency_key == sell_idemp).first()
             if not existing_sell:
                 sell_qty = task.outgoing_base_qty * task.multiplier
-                sell_receipt = BrokerService.execute_trade(
+                sell_receipt = await asyncio.to_thread(
+                    BrokerService.execute_trade,
                     user_id=task.user_id,
                     ticker=task.outgoing_ticker,
                     action="SELL",
@@ -223,7 +243,6 @@ class RebalanceWorker:
             # Check if user requested exit during SELL
             sub_recheck = db.query(Subscription).filter(Subscription.id == task.subscription_id).first()
             if not sub_recheck or not sub_recheck.active or sub_recheck.status in ("EXITING", "EXITED"):
-                # Mark outgoing position liquidated and skip BUY
                 outgoing_pos = db.query(Position).filter(
                     Position.subscription_id == task.subscription_id,
                     Position.ticker == task.outgoing_ticker,
@@ -239,12 +258,13 @@ class RebalanceWorker:
                 self._check_rebalance_complete(db, job_id, folio_id)
                 return
 
-            # Step 2: BUY incoming stock with idempotency guard
+            # Step 2: BUY incoming stock (non-blocking threadpool execution)
             buy_idemp = f"rebal-{task.id}-{task.incoming_ticker}-BUY"
             existing_buy = db.query(Order).filter(Order.idempotency_key == buy_idemp).first()
             if not existing_buy:
                 buy_qty = task.incoming_base_qty * task.multiplier
-                buy_receipt = BrokerService.execute_trade(
+                buy_receipt = await asyncio.to_thread(
+                    BrokerService.execute_trade,
                     user_id=task.user_id,
                     ticker=task.incoming_ticker,
                     action="BUY",
@@ -322,6 +342,7 @@ class RebalanceWorker:
                         delay = min(30, 2 ** t.retries)
                         t.next_retry_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(seconds=delay)
                     t.error_message = str(e)
+                    t.lease_until = None
                     
                     # Reset subscription status if stuck in REBALANCING
                     db_fail.execute(
@@ -331,8 +352,8 @@ class RebalanceWorker:
                     db_fail.commit()
                     self._check_rebalance_complete(db_fail, t.job_id, t.folio_id)
                 db_fail.close()
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.exception(f"Failed to persist task failure state for task {task_id}: {ex}")
         finally:
             db.close()
 
@@ -358,12 +379,17 @@ class RebalanceWorker:
                         RebalanceTaskRecord.status == "FAILED"
                     ).count()
 
+                    total_tasks = job.total_tasks or (pending_tasks + completed_tasks + failed_tasks)
+
                     # Derive exact counter values from source of truth
                     job.completed_tasks = completed_tasks
                     job.failed_tasks = failed_tasks
                     
                     if pending_tasks == 0:
-                        if failed_tasks > 0:
+                        if failed_tasks == total_tasks and total_tasks > 0:
+                            job.status = "FAILED"
+                            final_folio_status = "REBALANCE_FAILED"
+                        elif failed_tasks > 0:
                             job.status = "PARTIAL_FAILURE"
                             final_folio_status = "REBALANCE_REQUIRES_RECONCILIATION"
                         else:

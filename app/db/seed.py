@@ -124,15 +124,10 @@ FOLIOS_DATA = [
 ]
 
 def seed_data(db: Session) -> None:
-    # Check if we already have folios
-    existing_count = db.query(Folio).count()
-    if existing_count > 0:
-        return
-
-    # Startup validation checks on seed data integrity
-    if len(FOLIOS_DATA) != 7:
-        raise ValueError(f"Seed data must contain exactly 7 Folios, found {len(FOLIOS_DATA)}")
-
+    """
+    Ensures all 7 required Folios exist and each has a complete 12-stock composition.
+    Heals any missing or partially initialized Folios.
+    """
     for folio_info in FOLIOS_DATA:
         stocks = folio_info["stocks"]
         if len(stocks) != 12:
@@ -148,18 +143,28 @@ def seed_data(db: Session) -> None:
             if s["base_quantity"] <= 0:
                 raise ValueError(f"Base quantity for {s['ticker']} in {folio_info['name']} must be positive")
 
-        # Create Folio
-        folio = Folio(name=folio_info["name"])
-        db.add(folio)
-        db.flush()  # to get folio.id
-
-        # Add stocks
-        for stock_info in folio_info["stocks"]:
-            stock = FolioStock(
-                folio_id=folio.id,
-                ticker=stock_info["ticker"].strip().upper(),
-                base_quantity=float(stock_info["base_quantity"]),
-            )
-            db.add(stock)
+        folio = db.query(Folio).filter(Folio.name == folio_info["name"]).first()
+        if not folio:
+            folio = Folio(name=folio_info["name"])
+            db.add(folio)
+            db.flush()
+            for stock_info in folio_info["stocks"]:
+                stock = FolioStock(
+                    folio_id=folio.id,
+                    ticker=stock_info["ticker"].strip().upper(),
+                    base_quantity=float(stock_info["base_quantity"]),
+                )
+                db.add(stock)
+        else:
+            # Verify and heal stock count if needed
+            current_stock_count = db.query(FolioStock).filter(FolioStock.folio_id == folio.id).count()
+            if current_stock_count == 0:
+                for stock_info in folio_info["stocks"]:
+                    stock = FolioStock(
+                        folio_id=folio.id,
+                        ticker=stock_info["ticker"].strip().upper(),
+                        base_quantity=float(stock_info["base_quantity"]),
+                    )
+                    db.add(stock)
     
     db.commit()

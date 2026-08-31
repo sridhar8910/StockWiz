@@ -1,9 +1,12 @@
 import uuid
 import datetime
+import logging
 from typing import Optional, Dict
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.models.order import Order
+
+logger = logging.getLogger("broker_service")
 
 class BrokerService:
     # In-memory fallback cache
@@ -55,8 +58,9 @@ class BrokerService:
                         "quantity": float(existing_order.quantity),
                         "idempotency_key": existing_order.idempotency_key
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Error querying idempotency key '{idempotency_key}': {e}")
+                raise e
             finally:
                 if should_close:
                     session.close()

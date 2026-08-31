@@ -35,13 +35,21 @@ def test_multi_worker_atomic_task_claim_race(client):
     from sqlalchemy import text
     from app.models.rebalance_task import RebalanceTaskRecord
 
+    # Create subscription first to satisfy foreign key integrity
+    sub_res = client.post("/api/subscriptions", json={
+        "user_id": "user-race-worker",
+        "folio_id": 1,
+        "multiplier": 1.0
+    })
+    sub_id = sub_res.json()["subscription"]["id"]
+
     # Create a pending task in DB
     db1 = SessionLocal()
     try:
         task = RebalanceTaskRecord(
             folio_id=1,
-            subscription_id=1,
-            user_id="user-race",
+            subscription_id=sub_id,
+            user_id="user-race-worker",
             outgoing_ticker="RELIANCE",
             incoming_ticker="WIPRO",
             multiplier=1.0,
@@ -75,4 +83,3 @@ def test_multi_worker_atomic_task_claim_race(client):
     finally:
         db_worker1.close()
         db_worker2.close()
-
