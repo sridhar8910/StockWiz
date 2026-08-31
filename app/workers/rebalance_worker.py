@@ -177,8 +177,15 @@ class RebalanceWorker:
             job_id = task.job_id
             folio_id = task.folio_id
 
-            sub = db.query(Subscription).filter(Subscription.id == task.subscription_id).first()
-            if not sub or not sub.active or sub.status == "EXITED":
+            # Step 0: Subscription lifecycle coordination (ACTIVE -> REBALANCING)
+            claim_sub_sql = text(
+                "UPDATE subscriptions SET status = 'REBALANCING' WHERE id = :sub_id AND status = 'ACTIVE' AND active = 1"
+            )
+            sub_claim_res = db.execute(claim_sub_sql, {"sub_id": task.subscription_id})
+            db.flush()
+
+            if sub_claim_res.rowcount == 0:
+                # Subscription has exited, is exiting, or is inactive
                 task.status = "COMPLETED"
                 task.completed_at = now_utc
                 task.error_message = "Subscription inactive or exited; skipped."
@@ -196,7 +203,8 @@ class RebalanceWorker:
                     ticker=task.outgoing_ticker,
                     action="SELL",
                     quantity=sell_qty,
-                    idempotency_key=sell_idemp
+                    idempotency_key=sell_idemp,
+                    db=db
                 )
                 sell_order = Order(
                     order_id=sell_receipt["order_id"],
@@ -212,6 +220,25 @@ class RebalanceWorker:
                 db.add(sell_order)
                 db.flush()
 
+            # Check if user requested exit during SELL
+            sub_recheck = db.query(Subscription).filter(Subscription.id == task.subscription_id).first()
+            if not sub_recheck or not sub_recheck.active or sub_recheck.status in ("EXITING", "EXITED"):
+                # Mark outgoing position liquidated and skip BUY
+                outgoing_pos = db.query(Position).filter(
+                    Position.subscription_id == task.subscription_id,
+                    Position.ticker == task.outgoing_ticker,
+                    Position.status == "ACTIVE"
+                ).first()
+                if outgoing_pos:
+                    outgoing_pos.status = "LIQUIDATED"
+                    outgoing_pos.updated_at = now_utc
+
+                task.status = "COMPLETED"
+                task.completed_at = now_utc
+                db.commit()
+                self._check_rebalance_complete(db, job_id, folio_id)
+                return
+
             # Step 2: BUY incoming stock with idempotency guard
             buy_idemp = f"rebal-{task.id}-{task.incoming_ticker}-BUY"
             existing_buy = db.query(Order).filter(Order.idempotency_key == buy_idemp).first()
@@ -222,7 +249,8 @@ class RebalanceWorker:
                     ticker=task.incoming_ticker,
                     action="BUY",
                     quantity=buy_qty,
-                    idempotency_key=buy_idemp
+                    idempotency_key=buy_idemp,
+                    db=db
                 )
                 buy_order = Order(
                     order_id=buy_receipt["order_id"],
@@ -266,6 +294,12 @@ class RebalanceWorker:
                 )
                 db.add(new_pos)
 
+            # Step 4: Transition subscription lifecycle back (REBALANCING -> ACTIVE)
+            release_sub_sql = text(
+                "UPDATE subscriptions SET status = 'ACTIVE' WHERE id = :sub_id AND status = 'REBALANCING' AND active = 1"
+            )
+            db.execute(release_sub_sql, {"sub_id": task.subscription_id})
+
             task.status = "COMPLETED"
             task.completed_at = now_utc
             db.commit()
@@ -285,10 +319,15 @@ class RebalanceWorker:
                         t.status = "FAILED"
                     else:
                         t.status = "PENDING"
-                        # Exponential backoff: 2s, 4s, 8s...
                         delay = min(30, 2 ** t.retries)
                         t.next_retry_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(seconds=delay)
                     t.error_message = str(e)
+                    
+                    # Reset subscription status if stuck in REBALANCING
+                    db_fail.execute(
+                        text("UPDATE subscriptions SET status = 'ACTIVE' WHERE id = :sub_id AND status = 'REBALANCING' AND active = 1"),
+                        {"sub_id": t.subscription_id}
+                    )
                     db_fail.commit()
                     self._check_rebalance_complete(db_fail, t.job_id, t.folio_id)
                 db_fail.close()
@@ -298,7 +337,7 @@ class RebalanceWorker:
             db.close()
 
     def _check_rebalance_complete(self, db: Session, job_id: int | None, folio_id: int | None) -> None:
-        """Checks if a RebalanceJob is finished and releases the folio lock using derived task counts."""
+        """Checks if a RebalanceJob is finished and releases the folio lock using RebalanceJob as sole source of truth."""
         now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         try:
             if job_id:
@@ -326,30 +365,19 @@ class RebalanceWorker:
                     if pending_tasks == 0:
                         if failed_tasks > 0:
                             job.status = "PARTIAL_FAILURE"
+                            final_folio_status = "REBALANCE_REQUIRES_RECONCILIATION"
                         else:
                             job.status = "COMPLETED"
+                            final_folio_status = "COMPLETED"
                         job.completed_at = now_utc
                         
-                        # Release the folio lock when the active job finishes
+                        # Release the folio lock strictly based on the completed job
                         folio = db.query(Folio).filter(Folio.id == job.folio_id).first()
                         if folio and folio.is_rebalancing:
                             folio.is_rebalancing = False
                             folio.version_id += 1
-                            folio.rebalance_status = job.status
-                            logger.info(f"Folio {job.folio_id} rebalancing finished with status {job.status}.")
-                        db.commit()
-            elif folio_id:
-                # Fallback for tasks not linked to a job_id
-                remaining = db.query(RebalanceTaskRecord).filter(
-                    RebalanceTaskRecord.folio_id == folio_id,
-                    RebalanceTaskRecord.status.in_(["PENDING", "PROCESSING"])
-                ).count()
-                if remaining == 0:
-                    folio = db.query(Folio).filter(Folio.id == folio_id).first()
-                    if folio and folio.is_rebalancing:
-                        folio.is_rebalancing = False
-                        folio.version_id += 1
-                        folio.rebalance_status = "COMPLETED"
+                            folio.rebalance_status = final_folio_status
+                            logger.info(f"Folio {job.folio_id} rebalance job {job_id} finished with status {job.status} (Folio status: {final_folio_status}).")
                         db.commit()
         except Exception as e:
             logger.error(f"Error checking rebalance completion: {e}")

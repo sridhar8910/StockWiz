@@ -121,7 +121,7 @@ class SubscriptionService:
 
         # Atomic conditional update to transition active -> inactive
         exit_sql = text(
-            "UPDATE subscriptions SET active = 0, status = 'EXITED' WHERE id = :id AND active = 1"
+            "UPDATE subscriptions SET active = 0, status = 'EXITED' WHERE id = :id AND active = 1 AND status IN ('ACTIVE', 'REBALANCING')"
         )
         result = db.execute(exit_sql, {"id": subscription_id})
         db.flush()

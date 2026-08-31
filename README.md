@@ -81,46 +81,152 @@ flowchart LR
 
 ## 3. API Surface
 
-### Folios
-- `GET /api/folios` — List all 7 pre-seeded Folios with their 12-stock composition.
-- `GET /api/folios/{folio_id}` — Get detailed stock breakdown for a specific Folio (supports integer `1` or string `'folio-1'`).
-
-### Subscriptions
-- `POST /api/subscriptions` — Subscribe a user to a Folio with multiplier (creates 12 BUY orders and 12 Position records atomically).
-  - **Body**:
-    ```json
-    {
-      "user_id": "user-101",
-      "folio_id": 1,
-      "multiplier": 3
-    }
-    ```
-- `GET /api/users/{user_id}/subscriptions` — List all active and past subscriptions for a user.
-- `POST /api/subscriptions/{subscription_id}/exit` — Exit a Folio, deactivating the subscription and liquidating all held positions.
-
-### Orders / Execution Receipts
-- `GET /api/orders` — View execution receipts audit log (supports `user_id`, `limit`, and `offset` query parameters).
-
-### Admin Operations
-- `POST /api/admin/rebalance` — Trigger atomic stock swap in a Folio with durable background fan-out cascade.
-  - **Body**:
-    ```json
-    {
-      "folio_id": 1,
-      "outgoing_ticker": "RELIANCE",
-      "incoming_ticker": "IDEA",
-      "new_base_quantity": 2.0
-    }
-    ```
-- `GET /api/admin/queue` — Real-time telemetry on background rebalance jobs and task queues.
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/folios` | List all 7 seeded Folios with their 12 constituent stocks |
+| `GET` | `/api/folios/{folio_id}` | Detailed stock composition of a specific Folio |
+| `POST` | `/api/subscriptions` | Subscribe user with multiplier (12 atomic BUY orders + 12 Positions) |
+| `GET` | `/api/users/{user_id}/subscriptions` | List all active and exited subscriptions for a user |
+| `POST` | `/api/subscriptions/{id}/exit` | Exit a Folio, deactivating subscription and liquidating held positions |
+| `GET` | `/api/orders` | Query immutable broker execution receipts (exact user_id filter, pagination) |
+| `POST` | `/api/admin/rebalance` | Trigger atomic stock replacement with asynchronous fan-out cascade |
+| `GET` | `/api/admin/queue` | Live telemetry for background rebalance jobs and task queues |
 
 ---
 
-## 4. Run Automated Tests
+## 4. Runnable Example API Calls (curl)
+
+### 1. List All Folios
+```bash
+curl -X GET "http://127.0.0.1:8000/api/folios" -H "Accept: application/json"
+```
+
+### 2. Subscribe User to a Folio (e.g. user-101 @ 3x Multiplier)
+```bash
+curl -X POST "http://127.0.0.1:8000/api/subscriptions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user-101",
+    "folio_id": 1,
+    "multiplier": 3.0
+  }'
+```
+**Response (201 Created)**:
+```json
+{
+  "subscription": {
+    "id": 1,
+    "user_id": "user-101",
+    "folio_id": 1,
+    "multiplier": 3.0,
+    "active": true,
+    "status": "ACTIVE",
+    "folio_name": "Alpha Growth"
+  },
+  "orders": [
+    {
+      "order_id": "ord-9e8a71b2c401",
+      "user_id": "user-101",
+      "subscription_id": 1,
+      "ticker": "RELIANCE",
+      "action": "BUY",
+      "quantity": 6.0,
+      "status": "EXECUTED",
+      "idempotency_key": "sub-1-RELIANCE-BUY",
+      "timestamp": "2026-08-31T09:30:00"
+    }
+  ]
+}
+```
+
+### 3. List User Subscriptions
+```bash
+curl -X GET "http://127.0.0.1:8000/api/users/user-101/subscriptions" -H "Accept: application/json"
+```
+
+### 4. Trigger Admin Stock Rebalance (Instant 202 Accepted)
+```bash
+curl -X POST "http://127.0.0.1:8000/api/admin/rebalance" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "folio_id": 1,
+    "outgoing_ticker": "RELIANCE",
+    "incoming_ticker": "IDEA",
+    "new_base_quantity": 2.0
+  }'
+```
+**Response (202 Accepted)**:
+```json
+{
+  "message": "Rebalance triggered successfully.",
+  "job_id": 1,
+  "outgoing_ticker": "RELIANCE",
+  "incoming_ticker": "IDEA",
+  "active_subscribers_queued": 1
+}
+```
+
+### 5. Check Background Worker Diagnostics
+```bash
+curl -X GET "http://127.0.0.1:8000/api/admin/queue" -H "Accept: application/json"
+```
+**Response (200 OK)**:
+```json
+{
+  "pending_count": 0,
+  "processing_count": 0,
+  "completed_count": 1,
+  "failed_count": 0,
+  "total_queued": 1,
+  "active_jobs": 0,
+  "total_jobs": 1,
+  "is_running": true
+}
+```
+
+### 6. Exit Active Subscription
+```bash
+curl -X POST "http://127.0.0.1:8000/api/subscriptions/1/exit" -H "Accept: application/json"
+```
+**Response (200 OK)**:
+```json
+{
+  "subscription": {
+    "id": 1,
+    "user_id": "user-101",
+    "folio_id": 1,
+    "multiplier": 3.0,
+    "active": false,
+    "status": "EXITED",
+    "folio_name": "Alpha Growth"
+  },
+  "orders": [
+    {
+      "order_id": "ord-4a12df08e923",
+      "user_id": "user-101",
+      "subscription_id": 1,
+      "ticker": "IDEA",
+      "action": "SELL",
+      "quantity": 6.0,
+      "status": "EXECUTED",
+      "idempotency_key": "exit-1-IDEA-SELL",
+      "timestamp": "2026-08-31T09:35:00"
+    }
+  ]
+}
+```
+
+### 7. Query Execution Receipts Audit Trail
+```bash
+curl -X GET "http://127.0.0.1:8000/api/orders?user_id=user-101&limit=20" -H "Accept: application/json"
+```
+
+---
+
+## 5. Run Automated Tests
 
 The test suite contains **32 comprehensive automated tests** covering subscriptions, exits, rebalancing cascades, multithreaded subscription races, atomic rebalance locking, crash recovery, and position ledgers:
 
 ```bash
 python -m pytest -v
 ```
-

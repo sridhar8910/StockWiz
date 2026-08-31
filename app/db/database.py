@@ -35,41 +35,46 @@ Base = declarative_base()
 def run_migrations(engine):
     """
     Safely apply schema migrations and unique indexes for database tables.
+    Fails fast if a migration error occurs.
     """
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
     
-    with engine.begin() as conn:
-        if "folios" in table_names:
-            columns = [col["name"] for col in inspector.get_columns("folios")]
-            if "version_id" not in columns:
-                conn.execute(text("ALTER TABLE folios ADD COLUMN version_id INTEGER DEFAULT 1 NOT NULL"))
-            if "is_rebalancing" not in columns:
-                conn.execute(text("ALTER TABLE folios ADD COLUMN is_rebalancing BOOLEAN DEFAULT 0 NOT NULL"))
-            if "rebalance_status" not in columns:
-                conn.execute(text("ALTER TABLE folios ADD COLUMN rebalance_status VARCHAR DEFAULT 'IDLE' NOT NULL"))
-                
-        if "orders" in table_names:
-            columns = [col["name"] for col in inspector.get_columns("orders")]
-            if "idempotency_key" not in columns:
-                conn.execute(text("ALTER TABLE orders ADD COLUMN idempotency_key VARCHAR"))
-            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_idempotency_key ON orders(idempotency_key) WHERE idempotency_key IS NOT NULL"))
+    try:
+        with engine.begin() as conn:
+            if "folios" in table_names:
+                columns = [col["name"] for col in inspector.get_columns("folios")]
+                if "version_id" not in columns:
+                    conn.execute(text("ALTER TABLE folios ADD COLUMN version_id INTEGER DEFAULT 1 NOT NULL"))
+                if "is_rebalancing" not in columns:
+                    conn.execute(text("ALTER TABLE folios ADD COLUMN is_rebalancing BOOLEAN DEFAULT 0 NOT NULL"))
+                if "rebalance_status" not in columns:
+                    conn.execute(text("ALTER TABLE folios ADD COLUMN rebalance_status VARCHAR DEFAULT 'IDLE' NOT NULL"))
+                    
+            if "orders" in table_names:
+                columns = [col["name"] for col in inspector.get_columns("orders")]
+                if "idempotency_key" not in columns:
+                    conn.execute(text("ALTER TABLE orders ADD COLUMN idempotency_key VARCHAR"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_idempotency_key ON orders(idempotency_key) WHERE idempotency_key IS NOT NULL"))
 
-        if "rebalance_tasks" in table_names:
-            columns = [col["name"] for col in inspector.get_columns("rebalance_tasks")]
-            if "next_retry_at" not in columns:
-                conn.execute(text("ALTER TABLE rebalance_tasks ADD COLUMN next_retry_at DATETIME"))
-            if "job_id" not in columns:
-                conn.execute(text("ALTER TABLE rebalance_tasks ADD COLUMN job_id INTEGER"))
+            if "rebalance_tasks" in table_names:
+                columns = [col["name"] for col in inspector.get_columns("rebalance_tasks")]
+                if "next_retry_at" not in columns:
+                    conn.execute(text("ALTER TABLE rebalance_tasks ADD COLUMN next_retry_at DATETIME"))
+                if "job_id" not in columns:
+                    conn.execute(text("ALTER TABLE rebalance_tasks ADD COLUMN job_id INTEGER"))
 
-        if "subscriptions" in table_names:
-            columns = [col["name"] for col in inspector.get_columns("subscriptions")]
-            if "status" not in columns:
-                conn.execute(text("ALTER TABLE subscriptions ADD COLUMN status VARCHAR DEFAULT 'ACTIVE' NOT NULL"))
-            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_active_user_folio ON subscriptions(user_id, folio_id) WHERE active = 1"))
+            if "subscriptions" in table_names:
+                columns = [col["name"] for col in inspector.get_columns("subscriptions")]
+                if "status" not in columns:
+                    conn.execute(text("ALTER TABLE subscriptions ADD COLUMN status VARCHAR DEFAULT 'ACTIVE' NOT NULL"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_active_user_folio ON subscriptions(user_id, folio_id) WHERE active = 1"))
 
-        if "positions" in table_names:
-            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_active_position ON positions(subscription_id, ticker) WHERE status = 'ACTIVE'"))
+            if "positions" in table_names:
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_active_position ON positions(subscription_id, ticker) WHERE status = 'ACTIVE'"))
+    except Exception as e:
+        logger.exception(f"Migration failure during startup: {e}")
+        raise e
 
 def get_db():
     db = SessionLocal()

@@ -10,7 +10,7 @@ class Subscription(Base):
     folio_id = Column(Integer, ForeignKey("folios.id"), nullable=False)
     multiplier = Column(Float, nullable=False)
     active = Column(Boolean, default=True, nullable=False)
-    status = Column(String, default="ACTIVE", nullable=False)  # ACTIVE, EXITED
+    status = Column(String, default="ACTIVE", nullable=False)  # ACTIVE, REBALANCING, EXITING, EXITED
 
     # Relationship to get folio
     folio = relationship("Folio", lazy="joined")
@@ -27,5 +27,5 @@ class Subscription(Base):
             postgresql_where=text("active = true")
         ),
         CheckConstraint("multiplier > 0", name="ck_sub_multiplier_positive"),
-        CheckConstraint("status IN ('ACTIVE', 'EXITED')", name="ck_sub_status_valid"),
+        CheckConstraint("status IN ('ACTIVE', 'REBALANCING', 'EXITING', 'EXITED')", name="ck_sub_status_valid"),
     )
